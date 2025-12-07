@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Effect - 2D Visualization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+    <h1>Canada Water Masterplan Visualization</h1>
+    <div class="visualization">
+        <div id="plan-view-container">
+            <h3>Site Plan</h3>
+            <!-- The p5.js canvas will be inserted here -->
+        </div>
+        <div id="info-panel">
+            <h3>Selection Details</h3>
+            <p id="info-text">Click on a shape to see its name.</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/ripple.js') }}"></script>
+</body>
+</html>

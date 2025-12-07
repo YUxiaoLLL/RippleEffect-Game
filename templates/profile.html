@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Profile: {{ character.name }}</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .profile-card {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 25px;
+            max-width: 600px;
+            margin: 20px auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0056b3;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 20px;
+        }
+        strong {
+            color: #333;
+        }
+        p {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="profile-card">
+        <h1>{{ character.name }}</h1>
+        <p><strong>Role:</strong> {{ character.role_name }}</p>
+
+        <h2>Backstory / Objectives:</h2>
+        <p>{{ character.backstory | replace('\n', '<br>') | safe }}</p>
+
+        <h2>Attributes:</h2>
+        <p><strong>Initial Stance:</strong> {{ character.initial_stance }}</p>
+        <p><strong>Influence Score:</strong> {{ character.influence }}</p>
+        {% set excluded_keys = ['id', 'is_player', 'name', 'role_name', 'role_id', 'backstory', 'initial_stance', 'stance', 'previous_stance', 'influence'] %}
+        {% for key, value in character.items() %}
+            {% if key not in excluded_keys and value %}
+                <p><strong>{{ key.replace('_', ' ') | title }}:</strong> {{ value }}</p>
+            {% endif %}
+        {% endfor %}
+
+        <p><a href="javascript:window.close();">Close Profile</a></p>
+    </div>
+</body>
+</html>

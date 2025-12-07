@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Effect - 3D Urban Sandbox</title>
+    <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        canvas { display: block; }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            width: 200px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group-horizontal {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .control-group-horizontal button {
+            width: 48%;
+        }
+        button:hover {
+            background-color: #777;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        #time-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+            text-align: center;
+            display: none; /* Hidden by default */
+        }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            width: 200px;
+            display: none; /* Hidden by default */
+        }
+        
+        /* --- Semantic Tooltip (Frosted Glass) --- */
+        #semantic-tooltip {
+            position: absolute;
+            display: none; /* Hidden by default */
+            background: rgba(255, 255, 255, 0.85); /* Slightly more opaque for readability */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+            color: #333;
+            width: 280px;
+            pointer-events: none; /* Let clicks pass through if needed, but mostly it's off to the side */
+            z-index: 1000;
+            transition: opacity 0.2s ease;
+        }
+        
+        #semantic-tooltip h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: #111;
+        }
+        
+        .tooltip-tag {
+            display: inline-block;
+            background: rgba(0, 122, 255, 0.1);
+            color: #007aff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 4px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+        
+        #semantic-tooltip p {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            color: #444;
+        }
+        
+        /* ... existing styles ... */
+    </style>
+</head>
+<body>
+    <!-- Semantic Tooltip Container -->
+    <div id="semantic-tooltip">
+        <h3 id="tooltip-title">Plot A1</h3>
+        <div id="tooltip-tags"></div>
+        <p id="tooltip-desc">Description goes here...</p>
+    </div>
+
+    <div id="time-panel">
+        <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+            <input type="date" id="date-input" style="width: 110px;">
+            <input type="time" id="time-input" step="900" style="width: 80px;">
+            <button id="pause-button" style="width: 30px; padding: 5px; background: #555;">⏸</button>
+        </div>
+        <div id="time-label" style="font-size: 14px; font-weight: bold;"></div>
+    </div>
+
+    <div id="ui-panel">
+        <div class="control-group">
+            <button id="move-button">Move (M)</button>
+            <button id="scale-button">Scale (S)</button>
+        </div>
+        <div class="control-group">
+            <label for="height-slider">Height</label>
+            <input type="range" id="height-slider" min="1" max="200" value="10">
+        </div>
+        <div class="control-group-horizontal">
+            <button id="undo">Undo</button>
+            <button id="redo">Redo</button>
+        </div>
+        <div class="control-group-horizontal">
+            <button id="apply">Apply</button>
+            <button id="show-original">Show Original</button>
+        </div>
+    </div>
+    <script type="module" src="app.js"></script>
+    <script>
+        // Check for 'mode=full' query parameter to show UI
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('mode') === 'full') {
+            document.getElementById('ui-panel').style.display = 'block';
+            document.getElementById('time-panel').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chapter 1 - Introduction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Righteous&display=swap" rel="stylesheet">
+    <style>
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+        /* Custom Text Shadow for START button */
+        .text-shadow-custom { text-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25); }
+        /* Inner Shadow for Image */
+        .shadow-inner-custom { box-shadow: inset -4px -4px 3.7px 1px rgba(0, 0, 0, 0.36); }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+
+    <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl">
+        
+        <!-- Background Image -->
+        <!-- Positioned per Figma: left-[-251.33%] w-[434.83%] to frame the specific texture area -->
+        <div class="absolute inset-0 overflow-hidden pointer-events-none">
+            <img src="{{ url_for('static', filename='images/chapter_introduction/background2.png') }}" class="absolute h-full max-w-none top-[-0.15%] left-[-251.33%] w-[434.83%]" alt="Background">
+        </div>
+
+        <!-- Main Flex Container (Gap 70px) -->
+        <!-- Positioned top 53px, left 19px per Figma -->
+        <div class="absolute top-[53px] left-[19px] w-[402px] h-[850px] flex flex-col gap-[70px] items-center">
+            
+            <!-- Top Banner (Chapter 1 + Back) -->
+            <div class="flex items-center justify-between w-[369px] shrink-0">
+                <p class="font-inter font-normal text-[24px] leading-[35px] tracking-[2.4px] text-[#f3e1b8]">
+                    Chapter 1
+                </p>
+                
+                <!-- Back Button -->
+                <a href="{{ url_for('chapter_selection') }}" class="relative w-[31px] h-[31px] cursor-pointer block">
+                    <div class="absolute inset-0 border border-white rounded-[10px]"></div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8.5 14.5L2 8L8.5 1.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Content Wrapper (Gap 60px) -->
+            <div class="flex flex-col gap-[60px] items-center w-full shrink-0">
+                
+                <!-- Inner Content (Gap 30px) -->
+                <div class="flex flex-col gap-[30px] items-center w-[386px]">
+                    
+                    <!-- Title Section -->
+                    <div class="flex flex-col gap-[5px] items-center text-center">
+                        <p class="font-righteous text-[28px] leading-[35px] tracking-[2.24px] text-[#fcfff4]">
+                            Venue Renewal
+                        </p>
+                        <p class="font-inter font-semibold text-[14px] leading-[29px] tracking-[1.12px] text-[#e2e2e1]">
+                            Canada Water: A District in Transformation
+                        </p>
+                    </div>
+
+                    <!-- Image with Inner Shadow -->
+                    <div class="relative w-[162px] h-[162px] rounded-[30px] shrink-0 pointer-events-none">
+                        <img src="{{ url_for('static', filename='images/chapter_introduction/chapter1_venue.png') }}" class="absolute inset-0 w-full h-full object-cover rounded-[30px]">
+                        <div class="absolute inset-0 shadow-inner-custom rounded-[30px]"></div>
+                    </div>
+
+                    <!-- Text Content -->
+                    <div class="flex flex-col gap-[30px] items-center text-center text-[#eae3c3]">
+                        
+                        <!-- Block 1 -->
+                        <p class="font-righteous text-[20px] leading-[29px] tracking-[1.6px]">
+                            A sweeping plan to remake<br>
+                            the heart of Canada Water<br>
+                            sparks debate across the community.
+                        </p>
+
+                        <!-- Block 2 -->
+                        <div class="font-righteous text-[20px] leading-[29px] tracking-[1.6px]">
+                            <p class="mb-0">Developers promise opportunities.</p>
+                            <p>Locals fear displacement.</p>
+                        </div>
+
+                        <!-- Block 3 (Preserve/Reshape) -->
+                        <div class="font-inter font-extrabold leading-[34px] tracking-[1.28px]">
+                             <p class="mb-0">
+                                <span class="text-[#eae3c3] text-[20px] tracking-[1.6px]">PRESERVE</span>
+                            </p>
+                            <p class="font-righteous text-[16px] mb-0">the existing neighborhood</p>
+                            <p class="mb-0">
+                                <span class="text-[16px] font-righteous">or</span> <span class="text-[#eae3c3] text-[20px] tracking-[1.6px]">RESHAPE</span>
+                            </p>
+                            <p class="font-righteous text-[16px]">its future?</p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Start Button -->
+                <a href="{{ url_for('role_selection') }}" class="border border-[#f2e5df] border-[1.5px] rounded-[20px] w-[80px] h-[29px] flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
+                    <p class="font-righteous text-[20px] leading-[20px] tracking-[1.6px] text-white text-shadow-custom">
+                        START
+                    </p>
+                </a>
+
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

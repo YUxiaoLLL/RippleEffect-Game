@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Customize Your Character</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;800&family=Pridi:wght@600&family=Righteous&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #202020; }
+        .font-pridi { font-family: 'Pridi', serif; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+        .font-righteous { font-family: 'Righteous', cursive; }
+
+        /* Help System Styles */
+        .help-icon {
+            position: absolute;
+            top: 52px; /* Aligned with back button */
+            right: 24px; 
+            width: 31px; 
+            height: 31px;
+            border-radius: 50%;
+            border: 1.5px solid {% if role.theme == 'dark' %}white{% else %}#ccc{% endif %};
+            color: {% if role.theme == 'dark' %}white{% else %}#ccc{% endif %};
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.35);
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 50;
+            transition: background 0.2s;
+        }
+        
+        .help-icon:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: white;
+            color: white;
+        }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .help-overlay.hidden {
+            display: none;
+            opacity: 0;
+        }
+
+        .help-content {
+            width: 80%;
+            max-width: 360px;
+            background: #fff;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .help-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 16px;
+            font-weight: 800;
+        }
+        
+        .help-content p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .close-btn {
+            margin-top: 18px;
+            padding: 10px 24px;
+            border-radius: 12px;
+            border: none;
+            background: #E5C2A5;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dcbba0;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'switch-off': '#d2d5da',
+                        'switch-on': '#69748d',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+    
+    <div class="relative w-[430px] h-[932px] {% if role.theme == 'dark' %}bg-black{% else %}bg-white{% endif %} overflow-hidden shadow-2xl">
+        
+        <!-- Help Icon -->
+        <div id="help-btn" class="help-icon">?</div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="help-overlay hidden">
+          <div class="help-content">
+            <h2>Character Traits</h2>
+            <p>These traits personalize your character and influence how the AI responds.</p>
+            <p><strong>Local Resident:</strong> Higher sensitivity to displacement issues.</p>
+            <p><strong>Has Children:</strong> Stronger stance on long-term community stability.</p>
+            <p><strong>Backstory:</strong> Influences narrative depth (but not game rules).</p>
+            <button id="help-close" class="close-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Backgrounds based on Theme -->
+        {% if role.theme == 'light' %}
+            {% if role.background_style == 'full_texture' %}
+                <!-- Full Texture for Activist/Others with 42% opacity -->
+                <!-- ADJUST TEXTURE OPACITY HERE: Change opacity-[0.15] to desired value -->
+                <div class="absolute inset-0 w-full h-full opacity-[0.15] pointer-events-none">
+                    <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" />
+                </div>
+            {% elif role.background_style == 'organic_shapes_buyer' or role.background_style == 'organic_shapes' %}
+                <!-- Organic Shapes for Future Buyer & Councilor (Shared) -->
+                
+                <!-- Blob 1: Top Left -->
+                <div class="absolute top-[130px] left-[-90px] w-[300px] h-[301px] opacity-30 pointer-events-none rotate-[13.57deg]">
+                    <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_1.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_1.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+
+                <!-- Blob 2: Middle Right -->
+                <div class="absolute top-[280px] left-[220px] w-[350px] h-[350px] opacity-30 pointer-events-none rotate-[90deg]">
+                     <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_2.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_2.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+
+                <!-- Blob 3: Bottom -->
+                 <div class="absolute top-[754px] left-[15px] w-[414px] h-[383px] opacity-30 pointer-events-none">
+                     <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_3.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_3.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+            {% elif role.background_style == 'architect_texture' %}
+                <!-- Architect Specific Texture -->
+                <div class="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div class="absolute left-1/2 top-1/2 w-[960px] h-[526px] -translate-x-1/2 -translate-y-1/2 rotate-[270deg] opacity-30">
+                        <img src="{{ url_for('static', filename='images/onboarding/architect_texture.png') }}" class="w-full h-full object-cover" />
+                    </div>
+                </div>
+            {% endif %}
+        {% else %}
+            <!-- Dark Marble Texture -->
+             <div class="absolute inset-0 w-full h-full">
+                <img src="{{ url_for('static', filename='images/onboarding/dark_bg_texture.png') }}" class="w-full h-full object-cover" />
+            </div>
+        {% endif %}
+
+        <!-- Character Portrait (Smaller/Different position on custom page) -->
+        <div class="absolute left-[98px] top-[94px] w-[245px] h-[365px] flex items-center justify-center bg-white rounded-[30px]">
+             <img src="{{ url_for('static', filename='images/onboarding/' + role.portrait) }}" class="w-full h-full object-cover rounded-[30px] shadow-lg {% if role.mirror_portrait %}scale-x-[-1]{% endif %}" alt="{{ role.role_name }}" />
+        </div>
+
+        <!-- Back Button -->
+        <a href="/onboarding" class="absolute top-[52px] left-[17px] w-[31px] h-[31px] cursor-pointer">
+             <div class="absolute inset-0 border {% if role.theme == 'dark' %}border-white{% else %}border-[#d9d9d9]{% endif %} rounded-[10px]"></div>
+             <div class="absolute inset-0 flex items-center justify-center">
+                <!-- Replaced PNG with SVG for color control -->
+                <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 14.5L2 8L8.5 1.5" stroke="{% if role.theme == 'dark' %}white{% else %}black{% endif %}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+             </div>
+        </a>
+
+        <!-- Customization Form -->
+        <form action="/customization" method="POST" class="absolute top-[470px] left-[50px] w-[342px] h-auto">
+            
+            <!-- Title -->
+            <p class="font-inter font-extrabold text-[18px] tracking-[1.8px] text-[#bc6d6d] mb-8">Customize Your Character:</p>
+            
+            <div class="flex flex-col items-start ml-[44px]">
+                <!-- Local Resident Toggle -->
+                <div class="flex items-center justify-between w-[277px] mb-4">
+                    <span class="font-inter font-medium text-[16px] text-[#a6a293] tracking-[1.28px]">Local Resident:</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-inter font-extrabold text-[16px] {% if role.theme == 'dark' %}text-white{% else %}text-[#4b4848]{% endif %}">Y</span>
+                        <input type="checkbox" name="local_resident" id="local_resident" class="hidden" onchange="toggleSwitch(this)">
+                        <!-- Custom Switch UI -->
+                        <div class="w-[36px] h-[20px] bg-switch-off rounded-full relative cursor-pointer transition-colors duration-200" onclick="document.getElementById('local_resident').click()">
+                            <div class="w-[16px] h-[16px] bg-white rounded-full absolute top-[2px] left-[2px] shadow-sm transition-all duration-200 transform"></div>
+                        </div>
+                        <span class="font-inter font-extrabold text-[16px] {% if role.theme == 'dark' %}text-white{% else %}text-[#4b4848]{% endif %}">N</span>
+                    </div>
+                </div>
+
+                <!-- Age Input -->
+                <div class="flex items-center justify-between w-[265px] mb-4">
+                    <span class="font-inter font-medium text-[16px] text-[#a6a293] tracking-[1.28px]">Age:</span>
+                    <input type="text" name="age" class="w-[47px] h-[20px] border {% if role.theme == 'dark' %}border-white text-white bg-transparent{% else %}border-black text-[#4b4848]{% endif %} rounded-[15px] text-center text-sm outline-none focus:ring-1 focus:ring-[#bc6d6d]" autocomplete="off">
+                </div>
+
+                <!-- Has Children Toggle -->
+                <div class="flex items-center justify-between w-[277px]">
+                    <span class="font-inter font-medium text-[16px] text-[#a6a293] tracking-[1.28px]">Has Children:</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-inter font-extrabold text-[16px] {% if role.theme == 'dark' %}text-white{% else %}text-[#4b4848]{% endif %}">Y</span>
+                        <input type="checkbox" name="has_children" id="has_children" class="hidden" onchange="toggleSwitch(this)">
+                        <!-- Custom Switch UI -->
+                        <div class="w-[36px] h-[20px] bg-switch-off rounded-full relative cursor-pointer transition-colors duration-200" onclick="document.getElementById('has_children').click()">
+                            <div class="w-[16px] h-[16px] bg-white rounded-full absolute top-[2px] left-[2px] shadow-sm transition-all duration-200 transform"></div>
+                        </div>
+                        <span class="font-inter font-extrabold text-[16px] {% if role.theme == 'dark' %}text-white{% else %}text-[#4b4848]{% endif %}">N</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backstory Input -->
+            <div class="relative w-[326px] h-[168px] mt-[33px] ml-[16px]">
+                <p class="font-inter font-medium text-[12px] text-[#a6a293] tracking-[0.96px] mb-2">Backstory:</p>
+                <div class="w-full h-[140px] border {% if role.theme == 'dark' %}border-white bg-transparent{% else %}border-black bg-white{% endif %} rounded-[15px] relative">
+                    <textarea name="backstory" class="w-full h-full bg-transparent border-none outline-none p-4 font-inter font-light text-[14px] {% if role.theme == 'dark' %}text-white{% else %}text-[#4b4848]{% endif %} resize-none" placeholder="enter heres:"></textarea>
+                    
+                    <!-- Decorative Line (CSS replacement) -->
+                    <div class="absolute bottom-[20px] left-[20px] right-[20px] h-[1px] border-b border-[#a6a293] opacity-50 pointer-events-none"></div>
+                </div>
+            </div>
+
+
+            <!-- Confirm Button -->
+            <div class="flex justify-center mt-8">
+                <button type="submit" class="w-[96px] h-[27px] border border-[#eed0c2] rounded-[20px] bg-[#f7f1de] flex items-center justify-center shadow-sm hover:scale-105 transition-transform cursor-pointer">
+                    <span class="font-righteous text-[#d98a64] text-[20px] tracking-[1.6px]">Confirm</span>
+                </button>
+            </div>
+
+        </form>
+
+
+    </div>
+
+    <script>
+        function toggleSwitch(checkbox) {
+            // Find the custom switch UI div (it's the sibling of the checkbox input)
+            const ui = checkbox.nextElementSibling; 
+            const knob = ui.firstElementChild;
+            
+            if (checkbox.checked) {
+                ui.classList.remove('bg-switch-off');
+                ui.classList.add('bg-switch-on');
+                knob.classList.add('translate-x-[16px]');
+            } else {
+                ui.classList.remove('bg-switch-on');
+                ui.classList.add('bg-switch-off');
+                knob.classList.remove('translate-x-[16px]');
+            }
+        }
+
+        // Help System Logic
+        const helpBtn = document.getElementById("help-btn");
+        const helpOverlay = document.getElementById("help-overlay");
+        const helpClose = document.getElementById("help-close");
+
+        if (helpBtn && helpOverlay && helpClose) {
+            helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
+            helpClose.onclick = () => helpOverlay.classList.add("hidden");
+            
+            // Close when clicking outside content
+            helpOverlay.onclick = (e) => {
+                if (e.target === helpOverlay) {
+                    helpOverlay.classList.add("hidden");
+                }
+            };
+        }
+    </script>
+
+</body>
+</html>

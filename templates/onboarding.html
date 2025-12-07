@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{ role.role_name }} - Onboarding</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;800&family=Pridi:wght@600&family=Righteous&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #202020; }
+        .font-pridi { font-family: 'Pridi', serif; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+        .font-righteous { font-family: 'Righteous', cursive; }
+        
+        /* Toggle Animation */
+        .toggle-content { transition: opacity 0.3s ease-in-out; }
+        .hidden-content { opacity: 0; pointer-events: none; position: absolute; }
+
+        /* Help System Styles */
+        .help-icon {
+            position: absolute;
+            top: 52px; 
+            right: 24px;
+            width: 31px;
+            height: 31px;
+            border-radius: 50%;
+            border: 1.5px solid {% if role.theme == 'dark' %}white{% else %}#ccc{% endif %};
+            color: {% if role.theme == 'dark' %}white{% else %}#ccc{% endif %};
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.35);
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 50;
+            transition: background 0.2s;
+        }
+        
+        .help-icon:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: white;
+            color: white;
+        }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .help-overlay.hidden {
+            display: none;
+            opacity: 0;
+        }
+
+        .help-content {
+            width: 80%;
+            max-width: 360px;
+            background: #fff;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .help-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 16px;
+            font-weight: 800;
+        }
+        
+        .help-content p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .close-btn {
+            margin-top: 18px;
+            padding: 10px 24px;
+            border-radius: 12px;
+            border: none;
+            background: #E5C2A5;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dcbba0;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+    
+    <div class="relative w-[430px] h-[932px] {% if role.theme == 'dark' %}bg-black{% else %}bg-white{% endif %} overflow-hidden shadow-2xl">
+        
+        <!-- Help Icon -->
+        <div id="help-btn" class="help-icon">?</div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="help-overlay hidden">
+          <div class="help-content">
+            <h2>Role Profile & Task</h2>
+            <p><strong>Profile</strong> describes your background and general motivations.</p>
+            <p><strong>Task</strong> represents your civic responsibilities in the scenario.</p>
+            <p>Your decisions should align with your role's interests—but you can improvise and experiment.</p>
+            <button id="help-close" class="close-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Backgrounds based on Theme -->
+        {% if role.theme == 'light' %}
+            {% if role.background_style == 'full_texture' %}
+                <!-- Full Texture for Activist/Others -->
+                <!-- ADJUST TEXTURE OPACITY HERE: Change opacity-[0.2] to desired value -->
+                <div class="absolute inset-0 w-full h-full opacity-[0.2] pointer-events-none">
+                    <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" />
+                </div>
+            {% elif role.background_style == 'organic_shapes_buyer' or role.background_style == 'organic_shapes' %}
+                <!-- Organic Shapes for Future Buyer & Councilor (Shared) -->
+                
+                <!-- Blob 1: Top Left -->
+                <div class="absolute top-[130px] left-[-90px] w-[300px] h-[301px] opacity-30 pointer-events-none rotate-[13.57deg]">
+                    <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_1.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_1.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+
+                <!-- Blob 2: Middle Right -->
+                <div class="absolute top-[280px] left-[220px] w-[350px] h-[350px] opacity-30 pointer-events-none rotate-[90deg]">
+                     <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_2.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_2.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+
+                <!-- Blob 3: Bottom -->
+                 <div class="absolute top-[754px] left-[15px] w-[414px] h-[383px] opacity-30 pointer-events-none">
+                     <img src="{{ url_for('static', filename='images/onboarding/light_bg_texture.png') }}" class="w-full h-full object-cover" style="mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_3.svg') }}'); -webkit-mask-image: url('{{ url_for('static', filename='images/onboarding/buyer_mask_3.svg') }}'); mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;" />
+                </div>
+            {% elif role.background_style == 'architect_texture' %}
+                <!-- Architect Specific Texture -->
+                <!-- Rotated 270deg, Opacity 30% per user request -->
+                <!-- Centered to ensure full coverage -->
+                <div class="absolute inset-0 overflow-hidden pointer-events-none">
+                     <div class="absolute left-1/2 top-1/2 w-[960px] h-[526px] -translate-x-1/2 -translate-y-1/2 rotate-[270deg] opacity-30">
+                         <img src="{{ url_for('static', filename='images/onboarding/architect_texture.png') }}" class="w-full h-full object-cover" />
+                     </div>
+                </div>
+            {% endif %}
+
+            <!-- Light Theme Portrait Container -->
+            <!-- Dynamic dimensions based on role style -->
+            {% if role.background_style == 'plain_white' %}
+                <!-- Resident: Square Portrait (326x326) - Removed Shadow -->
+                <div class="absolute left-[52px] top-[110px] w-[326px] h-[326px] flex items-center justify-center bg-transparent rounded-[30px]">
+                    <img src="{{ url_for('static', filename='images/onboarding/' + role.portrait) }}" class="w-full h-full object-cover rounded-[30px] transform {% if role.mirror_portrait %}scale-x-[-1]{% endif %}" alt="{{ role.role_name }}" />
+                </div>
+            {% elif role.role_name == 'Architect' %}
+                <!-- Architect: Portrait Aspect (243x365) at y=78 -->
+                 <div class="absolute left-[99px] top-[78px] w-[243px] h-[365px] flex items-center justify-center bg-white rounded-[30px]">
+                    <img src="{{ url_for('static', filename='images/onboarding/' + role.portrait) }}" class="w-full h-full object-cover rounded-[30px] shadow-lg transform {% if role.mirror_portrait %}scale-x-[-1]{% endif %}" alt="{{ role.role_name }}" />
+                </div>
+            {% else %}
+                <!-- Others: Portrait Aspect (245x365) -->
+                <div class="absolute left-[98px] top-[94px] w-[245px] h-[365px] flex items-center justify-center bg-white rounded-[30px]">
+                    <img src="{{ url_for('static', filename='images/onboarding/' + role.portrait) }}" class="w-full h-full object-cover rounded-[30px] shadow-lg transform {% if role.mirror_portrait %}scale-x-[-1]{% endif %}" alt="{{ role.role_name }}" />
+                </div>
+            {% endif %}
+
+        {% else %}
+            <!-- Dark Marble Texture for Dark Theme -->
+             <div class="absolute inset-0 w-full h-full">
+                <img src="{{ url_for('static', filename='images/onboarding/dark_bg_texture.png') }}" class="w-full h-full object-cover" />
+            </div>
+
+            <!-- Dark Theme Portrait Container -->
+            <!-- Updated to match Light Theme dimensions (W:245, H:365, X:98, Y:94) -->
+            <div class="absolute left-[98px] top-[94px] w-[245px] h-[365px] flex items-center justify-center">
+                <img src="{{ url_for('static', filename='images/onboarding/' + role.portrait) }}" class="w-full h-full object-cover rounded-[30px] shadow-lg" alt="{{ role.role_name }}" />
+            </div>
+        {% endif %}
+
+
+
+        <!-- Role Title -->
+        <!-- Adjusted top position to 493px (Resident/Default) or 519px (Architect) -->
+        <p class="absolute {% if role.role_name == 'Architect' %}top-[519px]{% else %}top-[493px]{% endif %} w-full text-center font-pridi font-semibold text-[24px] tracking-[1.92px] {% if role.theme == 'dark' %}text-white{% else %}text-black{% endif %}">
+            {{ role.role_name }}
+        </p>
+
+        <!-- Toggle Switch -->
+        <!-- Adjusted top position to 545px (Default) or 571px (Architect) -->
+        <div class="absolute {% if role.role_name == 'Architect' %}top-[571px]{% else %}top-[545px]{% endif %} left-[118px] w-[204px] h-[44px] bg-[#f5f6f0] rounded-[15px] flex relative cursor-pointer" onclick="toggleView()">
+            <!-- Active Indicator (Sliding bg) -->
+            <div id="toggleIndicator" class="absolute left-0 top-0 w-[102px] h-[44px] bg-[#f2e5c5] rounded-[15px] shadow-inner transition-all duration-300"></div>
+            
+            <!-- Buttons -->
+            <div class="w-1/2 h-full flex items-center justify-center z-10 text-center">
+                <span class="font-righteous text-[16px] tracking-[1.28px] text-black">Profile</span>
+            </div>
+            <div class="w-1/2 h-full flex items-center justify-center z-10 text-center">
+                <span class="font-righteous text-[16px] tracking-[1.28px] text-black opacity-40">Task</span>
+            </div>
+        </div>
+
+        <!-- Content Area (Profile) -->
+        <!-- Adjusted top position to 643px (Default) or 659px (Architect) -->
+        <div id="profileView" class="toggle-content absolute {% if role.role_name == 'Architect' %}top-[659px]{% else %}top-[643px]{% endif %} w-full px-[48px] flex flex-col items-center transition-opacity duration-300">
+            <p class="font-inter font-medium text-[16px] leading-[29px] text-center tracking-[1.28px] {% if role.theme == 'dark' %}text-[#bbbaba]{% else %}text-[#686767]{% endif %}">
+                {{ role.description }}
+            </p>
+        </div>
+
+        <!-- Content Area (Tasks) -->
+        <!-- ADJUST TASK LIST LOCATION HERE: Change 'top-[626px]' to move the whole list up or down -->
+        <div id="taskView" class="toggle-content hidden-content opacity-0 absolute {% if role.role_name == 'Architect' %}top-[659px]{% else %}top-[626px]{% endif %} w-full px-[48px] flex flex-col items-center transition-opacity duration-300">
+             <!-- ADJUST TEXT SPACING HERE: 
+                  - 'leading-[26px]': Space between lines of text
+                  - 'space-y-4': Space between each bullet point -->
+             <ul class="list-disc list-inside font-inter font-medium text-[16px] leading-[26px] tracking-[1.28px] {% if role.theme == 'dark' %}text-[#bbbaba]{% else %}text-[#686767]{% endif %} text-center w-full space-y-4">
+                {% for task in role.tasks %}
+                    <li>{{ task }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Fixed Bottom Section: Separator & Tokens -->
+        <!-- Adjusted top to 834px -->
+        <div id="tokenDisplay" class="absolute top-[834px] w-full flex flex-col items-center transition-opacity duration-300 pointer-events-auto">
+             <!-- CSS Border -->
+             <div class="w-[140px] h-[1px] mb-3 border-t {% if role.theme == 'dark' %}border-[#bbbaba]{% else %}border-black opacity-20{% endif %}"></div>
+             
+             <div class="flex items-center gap-2">
+                 <p class="font-inter font-medium text-[14px] tracking-[1.36px] {% if role.theme == 'dark' %}text-[#bbbaba]{% else %}text-[#686767]{% endif %}">
+                    <span class="font-light">Starting Influence Tokens:</span>
+                    <span class="text-[17px] ml-1">{{ role.tokens }}</span>
+                </p>
+                <!-- Token Help Icon -->
+                <div id="token-help-btn" class="w-[18px] h-[18px] rounded-full border flex items-center justify-center cursor-pointer hover:bg-white/20 transition-colors {% if role.theme == 'dark' %}border-[#bbbaba] text-[#bbbaba]{% else %}border-[#686767] text-[#686767]{% endif %}">
+                    <span class="text-[10px] font-bold">?</span>
+                </div>
+             </div>
+        </div>
+
+        <!-- Token Help Overlay -->
+        <div id="token-help-overlay" class="help-overlay hidden">
+          <div class="help-content">
+            <h2>Influence Tokens</h2>
+            <p>Tokens represent your political, social, or economic <strong>“negotiation power.”</strong></p>
+            <ul style="text-align: left; padding-left: 20px; margin-bottom: 12px; font-size: 13px; color: #555; list-style-type: disc;">
+                <li>Spend tokens on actions</li>
+                <li>Automatically add two tokens each rounds begin</li>
+                <li>Running out limits your ability to influence others</li>
+            </ul>
+            <p style="font-weight: 600; color: #333;">Remember the tokens will be carried through the rounds until the end</p>
+            <button id="token-help-close" class="close-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Next Button -->
+        <!-- ADJUST BUTTON LOCATION HERE: Change 'top-[880px]' to move button up or down -->
+        <a href="/customization" class="absolute top-[880px] left-1/2 transform -translate-x-1/2 flex flex-col items-center cursor-pointer group z-20">
+             <div class="w-[78px] h-[27px] border border-[#eed0c2] rounded-[20px] bg-[#f6eed7] flex items-center justify-center mb-4 shadow-sm group-hover:scale-105 transition-transform">
+                 <span class="font-righteous text-[#d98a64] text-[20px] tracking-[1.6px]">Next</span>
+             </div>
+        </a>
+
+        <!-- Back Button -->
+        <a href="/role_selection" class="absolute top-[52px] left-[17px] w-[31px] h-[31px] cursor-pointer">
+             <div class="absolute inset-0 border {% if role.theme == 'dark' %}border-white{% else %}border-[#d9d9d9]{% endif %} rounded-[10px]"></div>
+             <div class="absolute inset-0 flex items-center justify-center">
+                <!-- Replaced PNG with SVG for color control -->
+                <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 14.5L2 8L8.5 1.5" stroke="{% if role.theme == 'dark' %}white{% else %}black{% endif %}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+             </div>
+        </a>
+
+    </div>
+
+    <script>
+        let isProfile = true;
+        const indicator = document.getElementById('toggleIndicator');
+        const profileView = document.getElementById('profileView');
+        const taskView = document.getElementById('taskView');
+        const tokenDisplay = document.getElementById('tokenDisplay');
+
+        function toggleView() {
+            isProfile = !isProfile;
+            
+            if (isProfile) {
+                // Move indicator to left
+                indicator.style.left = '0';
+                // Show profile, hide task
+                profileView.classList.remove('hidden-content');
+                profileView.style.opacity = '1';
+                taskView.style.opacity = '0';
+                tokenDisplay.style.opacity = '1'; // Show tokens
+                setTimeout(() => taskView.classList.add('hidden-content'), 300);
+            } else {
+                // Move indicator to right
+                indicator.style.left = '102px'; // Width of half the container
+                // Show task, hide profile
+                taskView.classList.remove('hidden-content');
+                taskView.style.opacity = '1';
+                profileView.style.opacity = '0';
+                tokenDisplay.style.opacity = '0'; // Hide tokens
+                setTimeout(() => profileView.classList.add('hidden-content'), 300);
+            }
+        }
+
+        // Help System Logic (Global)
+        const helpBtn = document.getElementById("help-btn");
+        const helpOverlay = document.getElementById("help-overlay");
+        const helpClose = document.getElementById("help-close");
+
+        if (helpBtn && helpOverlay && helpClose) {
+            helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
+            helpClose.onclick = () => helpOverlay.classList.add("hidden");
+            
+            // Close when clicking outside content
+            helpOverlay.onclick = (e) => {
+                if (e.target === helpOverlay) {
+                    helpOverlay.classList.add("hidden");
+                }
+            };
+        }
+
+        // Token Help System Logic
+        const tokenHelpBtn = document.getElementById("token-help-btn");
+        const tokenHelpOverlay = document.getElementById("token-help-overlay");
+        const tokenHelpClose = document.getElementById("token-help-close");
+
+        if (tokenHelpBtn && tokenHelpOverlay && tokenHelpClose) {
+            tokenHelpBtn.onclick = (e) => {
+                e.stopPropagation(); // Prevent bubbling if parent has clicks
+                tokenHelpOverlay.classList.remove("hidden");
+            };
+            tokenHelpClose.onclick = () => tokenHelpOverlay.classList.add("hidden");
+            
+            // Close when clicking outside content
+            tokenHelpOverlay.onclick = (e) => {
+                if (e.target === tokenHelpOverlay) {
+                    tokenHelpOverlay.classList.add("hidden");
+                }
+            };
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ripple Effect - Characters</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800&family=Righteous&family=Rethink+Sans:wght@600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #202020; font-family: 'Inter', sans-serif; }
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-rethink { font-family: 'Rethink Sans', sans-serif; }
+        /* Simple slide up animation */
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+    
+    <div class="relative w-[430px] h-[932px] bg-white overflow-hidden shadow-2xl slide-up">
+        
+        <!-- Back Button -->
+        <a href="{{ url_for('home_gaming') }}" class="absolute top-[38px] left-[15px] w-[31px] h-[31px] cursor-pointer z-50 hover:opacity-80 transition-opacity">
+             <div class="absolute inset-0 bg-[#d9d9d9] rounded-[10px]"></div>
+             <div class="absolute inset-0 flex items-center justify-center">
+                <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 14.5L2 8L8.5 1.5" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+             </div>
+        </a>
+
+        <!-- Title -->
+        <div class="absolute top-[80px] left-[29px] font-rethink font-semibold text-[24px] text-[#9f9e9d] opacity-50 tracking-[1.2px]">
+            Characters
+        </div>
+
+        <!-- List Container -->
+        <div class="absolute top-[140px] left-0 w-full h-[760px] overflow-y-auto pb-20 px-[34px] flex flex-col gap-[28px]">
+            {% for char in characters|sort(attribute='role_name') %}
+                {% if not char.is_player %}
+                    {% set role = char.role_name %}
+                    <!-- Determine Color -->
+                    {% set bg_color = '#fef3b3' %}
+                    {% set text_color_role = '#5D5D5D' %}
+                    
+                    {% if char.role_id == 'developer' %}
+                        {% set bg_color = '#f1cf9e' %} <!-- Dark Green -->
+                        {% set text_color_role = '#E0E0E0' %}
+                    {% elif char.role_id == 'council_planner' %}
+                        {% set bg_color = '#e19464' %} <!-- Sage Green -->
+                        {% set text_color_role = '#E0E0E0' %}
+                    {% elif char.role_id == 'urban_designer' %}
+                        {% set bg_color = '#cecea2' %} <!-- Light Sage -->
+                    {% elif char.role_id == 'resident_homeowner' %}
+                        {% set bg_color = '#3d5941' %} <!-- Beige -->
+                    {% elif char.role_id == 'resident_social' %}
+                        {% set bg_color = '#839170' %} <!-- Light Sage (#cecea2) as requested -->
+                    {% elif char.role_id == 'potential_buyer' %}
+                        {% set bg_color = '#e19464' %} <!-- Peach -->
+                    {% elif char.role_id == 'community_activist' %}
+                        {% set bg_color = '#ca562c' %} <!-- Rust -->
+                        {% set text_color_role = '#E0E0E0' %}
+                    {% endif %}
+
+                    <div class="relative min-h-[52px] w-[371px] rounded-[12px] shadow-sm flex items-center px-[18px] py-3 shrink-0" style="background-color: {{ bg_color }}">
+                        <div class="absolute inset-0 pointer-events-none shadow-[inset_-3px_-5px_12px_0px_rgba(0,0,0,0.09)] rounded-[10px]"></div>
+                        
+                        <!-- Role Name -->
+                        <span class="font-rethink font-semibold text-[14px] tracking-[1.12px] mr-2 z-10 flex-1 min-w-0" style="color: {{ text_color_role }}">
+                            {{ role }}
+                        </span>
+                        
+                        <!-- Character Name -->
+                        <span class="font-righteous text-[16px] text-black tracking-[1.28px] ml-auto z-10 shrink-0">
+                            {{ char.name }}
+                        </span>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+    </div>
+</body>
+</html>

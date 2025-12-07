@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Negotiation Group</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        .character-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1em;
+            margin-top: 2em;
+        }
+        .character-card {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 1em;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .character-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .character-card.player {
+            border-color: #007bff;
+            background-color: #e7f3ff;
+        }
+        .profile-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .profile-modal-content {
+            background-color: #fff;
+            padding: 2em;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        .profile-modal-content h2 {
+             margin-top: 0;
+             color: #333;
+        }
+        .profile-modal-content p {
+            margin-bottom: 0.7em;
+            line-height: 1.5;
+        }
+         .profile-modal-content strong { color: #555; }
+        .close-button {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+        .close-button:hover { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Negotiation Group Participants</h1>
+    <p>Here are the 10 members of the negotiation group. Click on a character to view their profile. Your character is highlighted.</p>
+
+    <div class="character-grid">
+        {% for char in characters %}
+        <div class="character-card {% if char.is_player %}player{% endif %}" onclick="showProfile('{{ char.id }}')" data-character-id="{{ char.id }}">
+            <strong>{{ char.name }}</strong>
+            <p><small>{{ char.role_name }}</small></p>
+            {% if char.is_player %}<p><small>(You)</small></p>{% endif %}
+             <!-- Store data directly in attributes -->
+             <div style="display: none;" class="profile-data">
+                 <span data-key="name">{{ char.name }}</span>
+                 <span data-key="role_name">{{ char.role_name }} {% if char.is_player %}(You){% endif %}</span>
+                 <span data-key="age">{{ char.age }}</span>
+                 <span data-key="gender">{{ char.gender }}</span>
+                 <span data-key="local_resident">{{ char.local_resident }}</span>
+                 <span data-key="has_children">{{ char.has_children }} {% if char.has_children == 'Yes' %}({{ char.num_children }}){% endif %}</span>
+                 <span data-key="marital_status">{{ char.marital_status }}</span>
+                 <span data-key="backstory">{{ char.backstory }}</span>
+             </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="profile-modal-overlay" onclick="closeProfile(event)">
+        <div class="profile-modal-content" onclick="event.stopPropagation();"> <!-- Prevent clicks inside from closing -->
+            <button class="close-button" onclick="closeProfile()">×</button>
+            <h2 id="modal-name"></h2>
+            <p><strong>Role:</strong> <span id="modal-role"></span></p>
+            <p><strong>Age:</strong> <span id="modal-age"></span></p>
+            <p><strong>Gender:</strong> <span id="modal-gender"></span></p>
+            <p><strong>Local Resident:</strong> <span id="modal-local-resident"></span></p>
+            <p><strong>Children:</strong> <span id="modal-children"></span></p>
+            <p><strong>Marital Status:</strong> <span id="modal-marital-status"></span></p>
+            <p><strong>Backstory:</strong></p>
+            <p id="modal-backstory"></p>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('profile-modal');
+
+        function showProfile(characterId) {
+            const card = document.querySelector(`.character-card[data-character-id="${characterId}"]`);
+            const dataContainer = card.querySelector('.profile-data');
+            const dataElements = dataContainer.querySelectorAll('span[data-key]');
+
+            // Clear previous data first (optional, but good practice)
+            document.querySelectorAll('.profile-modal-content span[id^="modal-"]').forEach(span => span.textContent = '');
+            document.getElementById('modal-backstory').textContent = ''; // Clear backstory too
+            document.getElementById('modal-name').textContent = '';
+
+            // Populate modal
+            dataElements.forEach(el => {
+                const key = el.dataset.key;
+                const value = el.textContent;
+                let targetId = '';
+
+                // Map data keys to the actual HTML IDs in the modal
+                switch (key) {
+                    case 'name':           targetId = 'modal-name'; break;
+                    case 'role_name':      targetId = 'modal-role'; break; // Fix ID mismatch
+                    case 'age':            targetId = 'modal-age'; break;
+                    case 'gender':         targetId = 'modal-gender'; break;
+                    case 'local_resident': targetId = 'modal-local-resident'; break; // Use corrected ID
+                    case 'has_children':   targetId = 'modal-children'; break; // Use specific ID for combined field
+                    case 'marital_status': targetId = 'modal-marital-status'; break; // Use corrected ID
+                    case 'backstory':      targetId = 'modal-backstory'; break;
+                    default: // Skip keys we don't display directly (like num_children, id, is_player, role_id)
+                        return;
+                }
+
+                const modalElement = document.getElementById(targetId);
+                if (modalElement) {
+                    // For 'has_children', the value already contains Yes/No (count)
+                    // For others, just set the text content.
+                    modalElement.textContent = value;
+                } else {
+                    console.error(`Modal element with ID ${targetId} not found for key ${key}`);
+                }
+            });
+
+            modal.style.display = 'flex'; // Show modal
+        }
+
+        function closeProfile(event) {
+             // Close only if clicking the overlay itself, not the content
+             if (!event || event.target === modal) {
+                 modal.style.display = 'none'; // Hide modal
+             }
+        }
+
+        // Optional: Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape" && modal.style.display === 'flex') {
+                closeProfile();
+            }
+        });
+    </script>
+
+</body>
+</html>

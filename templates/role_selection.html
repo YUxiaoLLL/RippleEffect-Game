@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Select Role</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;800&family=Pridi:wght@600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #202020; }
+        .font-pridi { font-family: 'Pridi', serif; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+        .text-shadow { text-shadow: 4px 4px 4.6px rgba(236, 236, 236, 0.25); }
+
+        /* Help System Styles */
+        .help-icon {
+            position: absolute;
+            top: 43px; /* Aligned with back button */
+            right: 65px; /* To the left of back button */
+            width: 31px; /* Match back button size */
+            height: 31px;
+            border-radius: 50%;
+            border: 1.5px solid #fff; /* Match back button border */
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.35);
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 50;
+            transition: background 0.2s;
+        }
+        
+        .help-icon:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .help-overlay.hidden {
+            display: none;
+            opacity: 0;
+        }
+
+        .help-content {
+            width: 80%;
+            max-width: 360px;
+            background: #fff;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .help-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 16px;
+            font-weight: 800;
+        }
+        
+        .help-content p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .close-btn {
+            margin-top: 18px;
+            padding: 10px 24px;
+            border-radius: 12px;
+            border: none;
+            background: #E5C2A5;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dcbba0;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+    
+    <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl">
+        
+        <!-- Help Icon -->
+        <div id="help-btn" class="help-icon">?</div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="help-overlay hidden">
+          <div class="help-content">
+            <h2>Role Selection</h2>
+            <p>Each role represents a real stakeholder in Canada Water.</p>
+            <p>Your starting <strong>Influence Tokens</strong> reflect your political or social power.</p>
+            <p>During negotiation, your stance, sensitivity, and token usage will shape how others respond.</p>
+            <button id="help-close" class="close-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Background Icon -->
+        <!-- Removed rotate-180 to fix orientation -->
+        <div class="absolute left-[61px] top-[406px] w-[369px] h-[300px] flex items-center justify-center opacity-50 pointer-events-none">
+            <img src="{{ url_for('static', filename='images/role_selection/bg_icon.png') }}" class="w-full h-full object-contain" alt="" />
+        </div>
+
+        <!-- Header -->
+        <div class="absolute top-[106px] left-[25px] w-full flex items-center">
+            <div class="flex flex-col leading-none">
+                <span class="font-inter font-light text-[#878787] text-[24px] tracking-[1.9px]">Select Your</span>
+                <span class="font-inter font-extrabold text-[#a5a5a5] text-[32px] tracking-[1.9px]">Nego. Role</span>
+            </div>
+            <div class="absolute left-[175px] top-[36px] w-[30px] h-[37px]">
+                <img src="{{ url_for('static', filename='images/role_selection/header_icon.png') }}" class="w-[50px] max-w-none" alt="" />
+            </div>
+        </div>
+
+        <!-- Form -->
+        <form action="{{ url_for('role_selection') }}" method="POST" id="roleForm">
+            <input type="hidden" name="role" id="selectedRoleInput">
+
+            <!-- Roles List -->
+            <div class="absolute w-full h-full top-0 left-0">
+
+                <!-- Councilor (Row 1) -->
+                <div class="absolute w-full h-[80px] top-[240px] cursor-pointer group" onclick="selectRole('council_planner')">
+                    <!-- Pill -->
+                    <div class="absolute left-[54px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#8b659c] to-[#302336] shadow-[3px_3px_7px_0px_rgba(255,255,255,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[74px] top-[-22px] w-[51px] h-[77px]">
+                         <img src="{{ url_for('static', filename='images/role_selection/councilor.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Councilor" />
+                    </div>
+                    <!-- Label Container (Right Aligned) -->
+                    <div class="absolute right-[25px] top-[28px] w-[132px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1">Councilor</p>
+                    </div>
+                </div>
+
+                <!-- Developer (Row 2) -->
+                <div class="absolute w-full h-[80px] top-[342px] cursor-pointer group" onclick="selectRole('developer')">
+                    <!-- Pill -->
+                    <div class="absolute left-[77px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#c0293b] to-[#5e2229] shadow-[3px_3px_7px_0px_rgba(215,213,213,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[128px] top-[-22px] w-[77px] h-[77px]">
+                        <img src="{{ url_for('static', filename='images/role_selection/developer.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Developer" />
+                    </div>
+                    <!-- Label Container -->
+                    <div class="absolute right-[25px] top-[27px] w-[140px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1">Developer</p>
+                    </div>
+                </div>
+
+                <!-- Future Buyer (Row 3) -->
+                <div class="absolute w-full h-[80px] top-[444px] cursor-pointer group" onclick="selectRole('potential_buyer')">
+                    <!-- Pill -->
+                    <div class="absolute left-[54px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#2c3e50] to-[#648db6] shadow-[3px_3px_7px_0px_rgba(215,213,213,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[70px] top-[-15px] w-[70px] h-[70px]">
+                        <img src="{{ url_for('static', filename='images/role_selection/future_buyer.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Buyer" />
+                    </div>
+                    <!-- Label Container -->
+                    <div class="absolute right-[25px] top-[28px] w-[179px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1 whitespace-nowrap">Future Buyer</p>
+                    </div>
+                </div>
+
+                <!-- Activist (Row 4) -->
+                <div class="absolute w-full h-[80px] top-[546px] cursor-pointer group" onclick="selectRole('community_activist')">
+                    <!-- Pill -->
+                    <div class="absolute left-[77px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#9ff7c4] to-[#46544c] shadow-[3px_3px_7px_0px_rgba(215,213,213,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[128px] top-[-22px] w-[77px] h-[77px]">
+                        <img src="{{ url_for('static', filename='images/role_selection/activist.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Activist" />
+                    </div>
+                    <!-- Label Container -->
+                    <div class="absolute right-[25px] top-[30px] w-[118px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1">Activist</p>
+                    </div>
+                </div>
+
+                <!-- Resident (Row 5) -->
+                <div class="absolute w-full h-[80px] top-[648px] cursor-pointer group" onclick="selectRole('resident_homeowner')">
+                    <!-- Pill -->
+                    <div class="absolute left-[54px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#f6f999] to-[#46544c] shadow-[3px_3px_7px_0px_rgba(215,213,213,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[70px] top-[-22px] w-[77px] h-[77px]">
+                        <img src="{{ url_for('static', filename='images/role_selection/resident.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Resident" />
+                    </div>
+                    <!-- Label Container -->
+                    <div class="absolute right-[25px] top-[28px] w-[126px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1">Resident</p>
+                    </div>
+                </div>
+
+                <!-- Architect (Row 6) -->
+                <div class="absolute w-full h-[80px] top-[750px] cursor-pointer group" onclick="selectRole('urban_designer')">
+                    <!-- Pill -->
+                    <div class="absolute left-[77px] top-[31px] w-[132px] h-[24px] rounded-[30px] bg-gradient-to-b from-[#fcaa78] to-[#36403a] shadow-[3px_3px_7px_0px_rgba(215,213,213,0.25)] group-hover:scale-105 transition-transform"></div>
+                    <!-- Character -->
+                    <div class="absolute left-[136px] top-[-22px] w-[51px] h-[77px]">
+                        <img src="{{ url_for('static', filename='images/role_selection/architect.png') }}" class="w-full h-full object-cover pointer-events-none z-10" alt="Architect" />
+                    </div>
+                    <!-- Label Container -->
+                    <div class="absolute right-[25px] top-[27px] w-[135px] h-[31px] border border-[#d9d9d9] rounded-[20px] flex items-center justify-center pointer-events-none opacity-80">
+                        <p class="font-pridi font-semibold text-[#cbd0a5] text-[24px] tracking-[1.92px] leading-[24px] text-shadow group-hover:text-white transition-colors pb-1">Architect</p>
+                    </div>
+                </div>
+
+            </div>
+        </form>
+
+        <!-- Orange Line (Bottom) -->
+        <div class="absolute bg-[#ee8359] h-[2px] left-[147px] top-[886px] w-[147px]" data-node-id="613:257"></div>
+
+        <!-- Back Button (Top Right) -->
+        <a href="/chapter/1" class="absolute top-[43px] right-[24px] w-[31px] h-[31px] border border-white rounded-[10px] flex items-center justify-center hover:bg-white/10 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 18l-6-6 6-6"/>
+            </svg>
+        </a>
+
+    </div>
+
+    <script>
+        function selectRole(roleId) {
+            document.getElementById('selectedRoleInput').value = roleId;
+            document.getElementById('roleForm').submit();
+        }
+
+        // Help System Logic
+        const helpBtn = document.getElementById("help-btn");
+        const helpOverlay = document.getElementById("help-overlay");
+        const helpClose = document.getElementById("help-close");
+
+        if (helpBtn && helpOverlay && helpClose) {
+            helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
+            helpClose.onclick = () => helpOverlay.classList.add("hidden");
+            
+            // Close when clicking outside content
+            helpOverlay.onclick = (e) => {
+                if (e.target === helpOverlay) {
+                    helpOverlay.classList.add("hidden");
+                }
+            };
+        }
+    </script>
+</body>
+</html>

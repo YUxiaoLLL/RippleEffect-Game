@@ -1,0 +1,89 @@
+********************************************************************
+
+EDINA DIGIMAP:
+
+DIGITAL DATA SUPPLY
+
+********************************************************************
+
+
+This data is distributed under licence by:
+
+    EDINA
+    University of Edinburgh
+    https://edina.ac.uk
+
+    Tel:    0131 650 3302
+    Fax:    0131 650 3308
+    Email:  digimap@ed.ac.uk
+		
+
+
+---------------------------------------------------------
+
+CONTENTS
+
+You will have received the data files listed below, each product and area has
+its own folder. Note that each data folder contains a conditions.txt file
+which states the conditions for use of the data within. These conditions can
+vary between different data products.
+
+
+
+-------------------------------------------------------------------------------
+Folder:           mastermap_building_heights_6199870
+Extent:           535361.2845037992, 179057.189060689 - 536141.2388704156, 179702.41877507517
+Date Ordered:     4 December 2025 at 21:07:16
+Product:          OS MasterMap Building Height Attribute
+Version:          October 2024
+Format:           FileGeoDatabase
+Theme:            N/A
+Area:             1 tiles
+Tiles:
+ 
+Tile Name:        tq37ne
+Extent:           535000.0, 175000.0 - 540000.0, 180000.0
+Last Amended:     7 September 2024
+    -------------------------------------------------------------------------------
+Folder:           MasterMap Greenspace_6199871
+Extent:           535361.2845037992, 179057.189060689 - 536141.2388704156, 179702.41877507517
+Date Ordered:     4 December 2025 at 21:07:16
+Product:          OS MasterMap Greenspace
+Version:          October 2025
+Format:           SHAPE
+Theme:            N/A
+Area:             1 tiles
+Tiles:
+ 
+Tile Name:        tq37ne
+Extent:           535000.0, 175000.0 - 540000.0, 180000.0
+Last Amended:     17 October 2025
+    -------------------------------------------------------------------------------
+Folder:           mastermap-topo_6199872
+Extent:           535361.2845037992, 179057.189060689 - 536141.2388704156, 179702.41877507517
+Date Ordered:     4 December 2025 at 21:07:16
+Product:          OS MasterMap® Topography Layer
+Version:          May 2025
+Format:           FileGeoDatabase
+Theme:            N/A
+Area:             0.5032497332061673 square kilometres
+Chunks:
+ 
+Filename:         mastermap-topo_6199872/mastermap-topo_6199872.gdb
+Extent:           535361.2845037992, 179057.189060689 - 536141.2388704156, 179702.41877507517
+Last Amended:     10 April 2025
+    -------------------------------------------------------------------------------
+Folder:           MasterMap Water Network_6199873
+Extent:           535361.2845037992, 179057.189060689 - 536141.2388704156, 179702.41877507517
+Date Ordered:     4 December 2025 at 21:07:16
+Product:          OS MasterMap Water Network
+Version:          October 2025
+Format:           GML3
+Theme:            N/A
+Area:             1 tiles
+Tiles:
+ 
+Tile Name:        tq37ne
+Extent:           535000.0, 175000.0 - 540000.0, 180000.0
+Last Amended:     17 September 2025
+     

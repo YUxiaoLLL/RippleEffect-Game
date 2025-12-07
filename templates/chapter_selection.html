@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Select Chapter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Righteous&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #000; }
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-black">
+    <!-- Main Container (iPhone 16 Pro Aspect Ratio) -->
+    <div class="relative w-[430px] h-[932px] bg-black overflow-hidden shadow-2xl">
+        
+        <!-- Background Image -->
+        <img alt="Background" class="absolute inset-0 w-full h-full object-cover opacity-90 pointer-events-none" src="{{ url_for('static', filename='images/chapter_selection/background.png') }}" />
+
+        <!-- Scrollable Content Container -->
+        <div class="absolute inset-0 overflow-y-auto no-scrollbar">
+            <div class="relative w-full h-[1000px]"> <!-- Explicit height to allow scrolling if needed -->
+
+                <!-- Chapter 4 (Bakery) -->
+                <div class="absolute left-[219px] top-[793px] w-[161px] flex flex-col gap-[10px] items-center justify-center opacity-50 grayscale">
+                    <div class="flex flex-col gap-[5px] items-center justify-center text-center">
+                        <p class="font-inter font-extrabold text-[#f6f6f6] text-[28px] tracking-[2.8px]">Chapter 4</p>
+                        <p class="font-righteous text-[#fcfff4] text-[20px] tracking-[1.6px]">Backery</p>
+                    </div>
+                    <div class="relative w-full aspect-square rounded-[30px] shadow-[12px_10px_5.5px_-1px_rgba(0,0,0,0.47)] overflow-hidden">
+                        <img alt="Bakery" class="w-full h-full object-cover" src="{{ url_for('static', filename='images/chapter_selection/chapter4_bakery.png') }}" />
+                    </div>
+                </div>
+
+                <!-- Line 3-4 -->
+                <div class="absolute left-[105px] top-[790px] w-[102px] h-[148px] flex items-center justify-center opacity-50">
+                    <div class="w-[1px] h-[180px] bg-white/30 rotate-[55deg]"></div>
+                </div>
+
+                <!-- Chapter 3 (MiniApart) -->
+                <div class="absolute left-[23px] top-[528px] w-[166px] flex flex-col gap-[10px] items-center justify-center opacity-50 grayscale">
+                    <div class="flex flex-col gap-[5px] items-center justify-center text-center">
+                        <p class="font-inter font-extrabold text-[#f6f6f6] text-[28px] tracking-[2.8px]">Chapter 3</p>
+                        <p class="font-righteous text-[#fcfff4] text-[20px] tracking-[1.6px]">MiniApart</p>
+                    </div>
+                    <div class="relative w-full aspect-square rounded-[30px] shadow-[12px_10px_5.5px_-1px_rgba(0,0,0,0.47)] overflow-hidden">
+                        <img alt="MiniApart" class="w-full h-full object-cover" src="{{ url_for('static', filename='images/chapter_selection/chapter3_miniapart.png') }}" />
+                    </div>
+                </div>
+
+                <!-- Line 2-3 -->
+                <div class="absolute left-[167px] top-[553px] flex items-center justify-center opacity-50 rotate-[249deg]">
+                    <div class="w-[102px] h-[148px] flex items-center justify-center">
+                        <div class="w-[1px] h-[180px] bg-white/30 rotate-[55deg]"></div>
+                    </div>
+                </div>
+
+                <!-- Chapter 2 (Garden) -->
+                <div class="absolute left-[213px] top-[291px] w-[167px] flex flex-col gap-[10px] items-center justify-center opacity-50 grayscale">
+                    <div class="flex flex-col gap-[5px] items-center justify-center text-center">
+                        <p class="font-inter font-extrabold text-[#f6f6f6] text-[28px] tracking-[2.8px]">Chapter 2</p>
+                        <p class="font-righteous text-[#fcfff4] text-[20px] tracking-[1.6px]">Garden</p>
+                    </div>
+                    <div class="relative w-full aspect-square rounded-[30px] shadow-[12px_10px_5.5px_-1px_rgba(0,0,0,0.47)] overflow-hidden">
+                        <img alt="Garden" class="w-full h-full object-cover" src="{{ url_for('static', filename='images/chapter_selection/chapter2_garden.png') }}" />
+                    </div>
+                </div>
+
+                <!-- Line 1-2 -->
+                <div class="absolute left-[105px] top-[312px] w-[102px] h-[148px] flex items-center justify-center">
+                    <!-- Dashed line image representation -->
+                    <div class="w-[1px] h-[180px] border-r-2 border-dashed border-white rotate-[55deg]"></div>
+                </div>
+
+                <!-- Chapter 1 (Venue Renewal) - ACTIVE -->
+                <div class="absolute left-[22px] top-[54px] w-[167px] flex flex-col gap-[10px] items-center justify-center hover:scale-105 transition-transform cursor-pointer" onclick="window.location.href='/chapter/1'">
+                    <div class="flex flex-col gap-[5px] items-center justify-center text-center">
+                        <p class="font-inter font-extrabold text-[#f6f6f6] text-[28px] tracking-[2.8px]">Chapter 1</p>
+                        <p class="font-righteous text-[#fcfff4] text-[20px] tracking-[1.6px]">Venue Renewal</p>
+                    </div>
+                    <div class="relative w-full aspect-square rounded-[30px] shadow-[12px_10px_5.5px_-1px_rgba(0,0,0,0.47)] overflow-hidden ring-4 ring-white/20">
+                        <img alt="Venue Renewal" class="w-full h-full object-cover" src="{{ url_for('static', filename='images/chapter_selection/chapter1_venue.png') }}" />
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</body>
+</html>

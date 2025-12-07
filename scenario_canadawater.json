@@ -1,0 +1,268 @@
+{
+    "context": {
+        "macro_economy": {
+            "office_market": "post-pandemic collapse",
+            "inflation": "high construction inflation 2023-2024",
+            "financing_pressure": "JV must maintain viability"
+        },
+        "urban_conditions": {
+            "site_character": "ex-industrial newspaper site",
+            "transport": ["Overground", "Jubilee Line", "bus interchange"],
+            "public_realm_constraints": ["limited street width", "adjacent housing"]
+        },
+        "planning_constraints": {
+            "affordable_policy_floor": 35,
+            "height_limits": "step-down massing near existing homes",
+            "heritage": "no heritage listings but high local attachment"
+        },
+        "land_value_logic": {
+            "office_conversion_reason": "office yields collapsed post-2020",
+            "venue_benefit": "anchoring cultural identity boosts place value",
+            "risk_management": "phased delivery reduces upfront financial exposure"
+        }
+    },
+    "issues": {
+        "affordable_housing": {
+            "share_percentage": 35,
+            "type_mix": "intermediate",
+            "distribution": "balanced"
+        },
+        "cultural_venue": {
+            "scale": "medium",
+            "management_model": "private",
+            "operating_hours": "standard"
+        }
+    },
+    "multipliers": {
+        "resident_homeowner": 2,
+        "resident_social": 2,
+        "future_buyer": 2,
+        "community_activist": 1,
+        "developer": 1,
+        "council_planner": 1,
+        "urban_designer": 1
+    },
+    "roles": {
+        "developer": {
+            "name": "Developer (British Land JV)",
+            "description": "Represents the joint venture leading the Canada Water masterplan.",
+            "objective": "Ensure the financial viability of the multi-decade project by adapting to market shifts, managing risk, and maintaining investor confidence.",
+            "influence": "Significant financial backing, planning expertise, and direct control over the development.",
+            "stance_distribution": {"neutral": 6, "support": 4},
+            "initial_influence_tokens": 8,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 1.0,
+                "strong": 0.8,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 0.8,
+            "sensitivities": {
+                "gentle_persuasion": 0.8,
+                "strong_persuasion": 1.0,
+                "pressure_opponent": 1.2
+            },
+            "ai_response_sensitivity": 0.8,
+            "issue_preferences": {
+                "affordable_housing_share": -1.5,
+                "cultural_venue_scale": 0.5,
+                "cultural_venue_management": -1.0
+            }
+        },
+        "resident_homeowner": {
+            "name": "Long-Term Homeowner",
+            "description": "A resident who has owned property in the area for many years.",
+            "objective": "Protect property values, peace, and quiet. Wary of noise and crowding from new venues and increased density.",
+            "influence": "Represents a vocal community group, has local political connections.",
+            "stance_distribution": {"oppose": 6, "neutral": 4},
+            "initial_influence_tokens": 4,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 1.5,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.1,
+            "sensitivities": {
+                "gentle_persuasion": 1.2,
+                "strong_persuasion": 0.8,
+                "pressure_opponent": 1.5
+            },
+            "ai_response_sensitivity": 1.2,
+            "issue_preferences": {
+                "affordable_housing_share": 0.5,
+                "cultural_venue_scale": -1.5,
+                "cultural_venue_operating_hours": -1.0
+            }
+        },
+        "resident_social": {
+            "name": "Social Housing Resident",
+            "description": "A resident living in social or affordable housing within or near the redevelopment zone.",
+            "objective": "Fight against any reduction in affordable housing. Concerned about displacement and gentrification.",
+            "influence": "Strong moral argument, support from community activists and some councillors.",
+            "stance_distribution": {"oppose": 8, "neutral": 2},
+            "initial_influence_tokens": 3,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 1.0,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.0,
+            "sensitivities": {
+                "gentle_persuasion": 1.5,
+                "strong_persuasion": 1.2,
+                "pressure_opponent": 0.5
+            },
+            "ai_response_sensitivity": 1.5,
+            "issue_preferences": {
+                "affordable_housing_share": 2.0,
+                "affordable_housing_type": 1.5,
+                "cultural_venue_management": 1.0
+            }
+        },
+        "potential_buyer": {
+            "name": "Potential Buyer / Investor",
+            "description": "Represents the target market of young professionals and investors looking to buy new homes in the area.",
+            "objective": "Wants a vibrant, high-amenity area with strong cultural identity and good investment potential.",
+            "influence": "Represents market demand, which is crucial for the developer's sales strategy.",
+            "stance_distribution": {"support": 7, "neutral": 3},
+            "initial_influence_tokens": 3,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 1.0,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.0,
+            "sensitivities": {
+                "gentle_persuasion": 1.0,
+                "strong_persuasion": 1.2,
+                "pressure_opponent": 0.8
+            },
+            "ai_response_sensitivity": 1.0,
+            "issue_preferences": {
+                "affordable_housing_share": 0.2,
+                "cultural_venue_scale": 1.5,
+                "cultural_venue_operating_hours": 1.0
+            }
+        },
+        "community_activist": {
+            "name": "Community Activist",
+            "description": "An advocate for anti-gentrification, cultural democracy, and inclusive development.",
+            "objective": "Ensure the development benefits the existing community, not just new arrivals. Wary of 'arts-washing' and privately controlled public spaces.",
+            "influence": "Mobilizes public opinion, scrutinizes developer promises, and organizes protests.",
+            "stance_distribution": {"oppose": 5, "neutral": 5},
+            "initial_influence_tokens": 4,
+            "initial_trust": 40,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 0.7,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.2,
+            "sensitivities": {
+                "gentle_persuasion": 1.2,
+                "strong_persuasion": 1.0,
+                "pressure_opponent": 0.7
+            },
+            "ai_response_sensitivity": 1.2,
+            "issue_preferences": {
+                "affordable_housing_share": 2.0,
+                "affordable_housing_type": 1.0,
+                "cultural_venue_management": 2.0
+            }
+        },
+        "council_planner": {
+            "name": "Council Planner / Councillor",
+            "description": "An elected official or planner from Southwark Council, responsible for ensuring the plan is compliant and fair.",
+            "objective": "Balance legal compliance (e.g., affordable housing floors), electoral accountability, and the long-term success of the neighbourhood.",
+            "influence": "Regulatory power, political accountability, and the final say on planning approval.",
+            "stance_distribution": {"neutral": 8, "support": 1, "oppose": 1},
+            "initial_influence_tokens": 7,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 1.0,
+                "pressure": 1.0,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.0,
+            "sensitivities": {
+                "gentle_persuasion": 1.0,
+                "strong_persuasion": 1.0,
+                "pressure_opponent": 1.0
+            },
+            "ai_response_sensitivity": 1.0,
+            "issue_preferences": {
+                "affordable_housing_share": 1.0,
+                "affordable_housing_distribution": 1.0,
+                "cultural_venue_scale": 0.5
+            }
+        },
+        "urban_designer": {
+            "name": "Urban Designer / Architect",
+            "description": "A professional focused on the quality of the public realm, massing, and placemaking.",
+            "objective": "Promote a high-quality, walkable, and coherent public realm with active ground floors and well-integrated open spaces.",
+            "influence": "Technical expertise and design standards that influence the planning committee's decisions.",
+            "stance_distribution": {"neutral": 9, "support": 1},
+            "initial_influence_tokens": 5,
+            "initial_trust": 50,
+            "token_modifiers": {
+                "gentle": 0.8,
+                "pressure": 1.0,
+                "strong": 1.0,
+                "recruit": 1.0
+            },
+            "polarization_modifier": 1.0,
+            "sensitivities": {
+                "gentle_persuasion": 1.3,
+                "strong_persuasion": 1.1,
+                "pressure_opponent": 0.5
+            },
+            "ai_response_sensitivity": 1.1,
+            "issue_preferences": {
+                "affordable_housing_distribution": 1.5,
+                "cultural_venue_scale": 1.5,
+                "cultural_venue_management": 0.5
+            }
+        }
+    },
+    "micro_events": [
+        {
+            "id": "viability_shock",
+            "text": "Viability Shock: A new report shows construction inflation has spiked, putting the project's financial model under severe pressure.",
+            "effects": {"target": "role", "role_id": "developer", "stance_delta": -8, "climate_delta": -5}
+        },
+        {
+            "id": "noise_petition",
+            "text": "Noise Petition: A group of long-term homeowners has organized a petition against the proposed cultural venue, citing noise and traffic concerns.",
+            "effects": {"target": "role", "role_id": "resident_homeowner", "stance_delta": -8, "climate_delta": -5}
+        },
+        {
+            "id": "arts_funding_boost",
+            "text": "Arts Funding Boost: A national arts body offers a surprise grant for the cultural venue, increasing its prestige and potential.",
+            "effects": {"target": "all", "stance_delta": 5, "climate_delta": 8}
+        },
+        {
+            "id": "affordable_housing_march",
+            "text": "Affordable Housing March: Social housing residents and community activists stage a march demanding the council protect affordable housing quotas.",
+            "effects": {"target": "role", "role_id": "resident_social", "stance_delta": 8, "climate_delta": 5}
+        },
+        {
+            "id": "investor_sentiment_dip",
+            "text": "Investor Sentiment Dip: A financial news outlet reports that young professionals are becoming wary of the area due to the ongoing disputes.",
+            "effects": {"target": "role", "role_id": "future_buyer", "stance_delta": -5, "climate_delta": -5}
+        },
+        {
+            "id": "council_policy_change",
+            "text": "Council Policy Change: The borough unexpectedly revises its local plan, raising the minimum affordable housing floor for large schemes from 35% to 40%.",
+            "effects": {"target": "role", "role_id": "council_planner", "stance_delta": 8, "climate_delta": 0}
+        }
+    ]
+}

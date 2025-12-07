@@ -1,0 +1,18 @@
+{
+  "comment": "To add data, copy an ID from scene.json and assign a function from the list below. Any building not in this file will be drawn with a default style.",
+  "functions": [
+    "Residential Area",
+    "Public Services",
+    "Built to Rent",
+    "Hotel",
+    "Hospital",
+    "To be Developed",
+    "Health Centre",
+    "School"
+  ],
+  "assignments": {
+    "692ff0bf-b3bc-4528-900b-9e0f7a39c2eb": { "function": "Hospital" },
+    "e105b965-b68c-4284-996e-66019fd2180a": { "function": "School" },
+    "b6169ba0-9701-43c0-9a77-39124b71a18b": { "function": "Residential Area" }
+  }
+}

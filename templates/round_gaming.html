@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Round Gaming - Ripple Effect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Righteous&family=Rethink+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'inter': ['Inter', 'sans-serif'],
+                        'righteous': ['Righteous', 'cursive'],
+                        'rethink': ['Rethink Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #202020; }
+        .chat-bubble { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Hide scrollbar for clean look */
+        #chatArea::-webkit-scrollbar { width: 4px; }
+        #chatArea::-webkit-scrollbar-thumb { background-color: #d9d9d9; border-radius: 4px; }
+
+        /* Help System Styles */
+        .help-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1.5px solid #ccc;
+            color: #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.05);
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        
+        .help-icon:hover {
+            background: rgba(0,0,0,0.1);
+            border-color: #9f9489;
+            color: #9f9489;
+        }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .help-overlay.hidden {
+            display: none;
+            opacity: 0;
+        }
+
+        .help-content {
+            width: 80%;
+            max-width: 360px;
+            background: #fff;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .help-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 16px;
+            font-weight: 800;
+        }
+        
+        .help-content p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .close-btn {
+            margin-top: 18px;
+            padding: 10px 24px;
+            border-radius: 12px;
+            border: none;
+            background: #E5C2A5;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dcbba0;
+        }
+
+        /* Action Button Tooltip */
+        .action-tooltip {
+            position: absolute;
+            background: rgba(30, 30, 30, 0.95);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 12px;
+            line-height: 1.4;
+            max-width: 220px;
+            z-index: 3000;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0;
+            transition: opacity 0.2s;
+            display: none;
+            font-family: 'Inter', sans-serif;
+            text-align: left;
+        }
+        
+        .action-tooltip strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #E5C2A5;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center">
+
+<div id="app" class="relative w-[430px] h-[932px] bg-white shadow-2xl overflow-hidden flex flex-col font-inter">
+    
+    <!-- Action Tooltip Element -->
+    <div id="action-tooltip" class="action-tooltip"></div>
+
+    <!-- Help Overlay -->
+    <div id="help-overlay" class="help-overlay hidden">
+      <div class="help-content">
+        <h2>Scene Visualization</h2>
+        <p>The <strong>3D map</strong> shows Canada Water's redevelopment site.</p>
+        <p>Your dialogue choices influence:</p>
+        <ul style="text-align: left; padding-left: 20px; margin-bottom: 12px; font-size: 13px; color: #555;">
+            <li>Building height</li>
+            <li>Land use type</li>
+            <li>Density</li>
+            <li>Affordable housing distribution</li>
+        </ul>
+        <p>Changes only appear when a consensus forms or an action pushes an issue threshold.</p>
+        
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+            <p style="margin-bottom: 8px;"><strong>Gentle Persuasion (1T):</strong> Low risk, small shift.</p>
+            <p style="margin-bottom: 8px;"><strong>Strong Persuasion (3T):</strong> Risky, high impact.</p>
+            <p style="margin-bottom: 8px;"><strong>Recruit Ally (4T):</strong> Adds their weight to yours.</p>
+            <p style="margin-bottom: 0;"><strong>Pressure (2T):</strong> Forces stance, reduces trust.</p>
+        </div>
+        
+        <button id="help-close" class="close-btn">Got it</button>
+      </div>
+    </div>
+
+    <!-- 1. Scene Visualization Section -->
+    <div class="relative px-[29px] pt-[46px] mb-2 shrink-0 bg-white">
+        <!-- Back Arrow -->
+        <a href="{{ url_for('home_gaming') }}" class="absolute top-[25px] left-[17px] w-[31px] h-[31px] cursor-pointer z-20 hover:opacity-80 transition-opacity">
+             <div class="absolute inset-0 bg-[#d9d9d9] rounded-[10px]"></div>
+             <div class="absolute inset-0 flex items-center justify-center">
+                <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 14.5L2 8L8.5 1.5" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+             </div>
+        </a>
+        
+        <!-- Header Title & Help -->
+        <div class="absolute top-[16px] right-[29px] flex items-center gap-2">
+            <div class="font-rethink font-semibold text-[16px] text-[#9f9489] tracking-[1.28px]">
+                Scene Visualization
+            </div>
+            <!-- Help Icon -->
+            <div id="help-btn" class="help-icon">?</div>
+        </div>
+
+        <!-- 3D Container -->
+        <div class="relative w-[371px] h-[326px] bg-[#d9d9d9] rounded-[20px] mt-[20px] overflow-hidden shadow-inner">
+             <iframe src="/3d/" class="w-full h-full border-0 pointer-events-auto"></iframe>
+             <!-- Buildings Updated Overlay -->
+             <div class="absolute bottom-[10px] left-0 w-full text-center font-thin text-[12px] tracking-[0.96px] text-black opacity-50 pointer-events-none">
+                 🏗️ Buildings Updated: A1
+             </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Wrapper with Cream Background -->
+    <div class="flex-1 flex flex-col bg-[#FFFDF6] rounded-t-[30px] relative overflow-hidden pt-5">
+        
+        <!-- 2. Messages Header Section -->
+        <div class="relative px-[32px] flex justify-between items-center mb-[10px] shrink-0">
+            <div class="font-rethink font-normal text-[20px] text-[#9f9489]/50 tracking-[1px]">
+                Messages
+            </div>
+            <button id="expandBtn" class="font-rethink text-[12px] text-[#959393] tracking-[0.96px] border border-[#d6c8cd] rounded-[5px] px-2 py-1 shadow-sm bg-[#fdf2f6]/30 hover:bg-white transition-colors">
+                Expand Scene ⤢
+            </button>
+        </div>
+
+        <!-- 3. Round & Tokens Info -->
+        <div class="relative px-[36px] flex justify-between items-center mb-[10px] shrink-0">
+            <div class="font-rethink font-medium text-[18px] text-[#9f9489] tracking-[0.54px]">
+                Round {{ state.round | default(1) }}/8
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="font-inter text-[10px] text-[#e34b2a] tracking-[0.8px]">Influence Tokens</span>
+                <span class="font-righteous text-[12px] text-black tracking-[0.96px]">{{ player_profile.influence_tokens }}T</span>
+            </div>
+        </div>
+
+        <!-- 4. Chat Area -->
+        <div class="relative flex-1 w-full px-[21px] overflow-y-auto pb-32 z-10" id="chatArea">
+            <!-- Dynamic Messages Container -->
+            <div id="messagesContainer" class="flex flex-col gap-4 pt-2">
+                <!-- Messages will be injected here -->
+            </div>
+        </div>
+
+        <!-- 5. Bottom Action Area -->
+        <div class="absolute bottom-0 left-0 w-full h-auto pb-[30px] pt-4 bg-gradient-to-t from-[#FFFDF6] via-[#FFFDF6] to-transparent z-20">
+            <!-- Action Buttons -->
+            <div class="flex justify-center gap-3 mb-4 px-4 flex-wrap" id="quickActions">
+                <button class="action-btn flex flex-col items-center justify-center w-[82px] h-[40px] bg-[#e5cdcd] rounded-[10px] shadow-[2px_1px_5.8px_0px_rgba(0,0,0,0.25)] hover:brightness-105 transition-all active:scale-95" data-action="gentle" data-cost="1">
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none mb-0.5">Gentle P.</span>
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none">1T</span>
+                </button>
+                 <button class="action-btn flex flex-col items-center justify-center w-[82px] h-[40px] bg-[#e5cdcd] rounded-[10px] shadow-[2px_1px_5.8px_0px_rgba(0,0,0,0.25)] hover:brightness-105 transition-all active:scale-95" data-action="strong" data-cost="3">
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none mb-0.5">Strong P.</span>
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none">3T</span>
+                </button>
+                 <button class="action-btn flex flex-col items-center justify-center w-[94px] h-[40px] bg-[#e5cdcd] rounded-[10px] shadow-[2px_1px_5.8px_0px_rgba(0,0,0,0.25)] hover:brightness-105 transition-all active:scale-95" data-action="ally" data-cost="4">
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none mb-0.5">Recruit Ally</span>
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none">4T</span>
+                </button>
+                 <button class="action-btn flex flex-col items-center justify-center w-[86px] h-[40px] bg-[#e5cdcd] rounded-[10px] shadow-[2px_1px_5.8px_0px_rgba(0,0,0,0.25)] hover:brightness-105 transition-all active:scale-95" data-action="pressure" data-cost="2">
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none mb-0.5">Pressure</span>
+                    <span class="font-rethink font-semibold text-[12px] text-black leading-none">2T</span>
+                </button>
+            </div>
+
+            <!-- Input Field -->
+            <div class="relative px-[29px]">
+                 <div class="relative w-full h-[31px] bg-[#e5cdcd] rounded-[10px]">
+                     <input type="text" id="messageInput" class="w-full h-full bg-transparent border-none focus:outline-none px-4 text-sm font-inter placeholder-gray-500" placeholder="Type a message...">
+                     <button id="sendBtn" class="absolute right-2 top-1/2 -translate-y-1/2 w-[20px] h-[20px] opacity-70 hover:opacity-100 transition-opacity">
+                         <img src="{{ url_for('static', filename='images/round/send_icon.png') }}" class="w-full h-full object-contain">
+                     </button>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen 3D Overlay -->
+    <div id="fullscreen3D" class="hidden fixed inset-0 z-50 bg-black">
+        <button id="close3D" class="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 backdrop-blur rounded-lg text-white z-10">
+            ✕
+        </button>
+        <iframe id="fullscreenFrame" src="/3d/?mode=full" class="w-full h-full border-0"></iframe>
+    </div>
+
+    <!-- Attributes Modal -->
+    <div id="attributesModal" class="hidden absolute inset-0 z-50 bg-black/30 backdrop-blur-[2px] flex items-center justify-center" onclick="closeAttributes()">
+        <div class="relative w-[320px] bg-[#E8E6D1] rounded-[20px] p-6 shadow-xl text-[#4A4A4A] font-inter transform transition-all" onclick="event.stopPropagation()">
+            <!-- Title -->
+            <div class="text-center mb-6">
+                <h3 class="font-rethink font-medium text-[18px] tracking-wide text-[#4A4A4A]">Attributes</h3>
+            </div>
+            
+            <!-- Attributes List -->
+            <div class="space-y-2 text-[13px] leading-tight" id="attributesContent">
+                <!-- Content injected via JS -->
+            </div>
+
+            <!-- Bottom Character Bar -->
+             <div class="mt-6 bg-[#D5D1B8] rounded-[10px] p-3 flex justify-between items-center">
+                 <span class="font-rethink text-[12px] text-white uppercase tracking-wider" id="modalRole">Role</span>
+                 <span class="font-rethink font-bold text-[14px] text-black" id="modalName">Name</span>
+             </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Application State
+let state = {
+    currentRound: {{ state.round | default(1) }},
+    messages: [],
+    stakeholders: {{ characters | tojson | safe }},
+    playerProfile: {{ player_profile | tojson | safe }},
+    climateScore: {{ climate_score | default(50) }},
+    history: {{ state.history | tojson | safe }} || []
+};
+
+// Render Logic
+function renderMessages() {
+    const container = document.getElementById('messagesContainer');
+    container.innerHTML = state.messages.map(msg => createMessageBubble(msg)).join('');
+    
+    // Auto scroll
+    const chatArea = document.getElementById('chatArea');
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function createMessageBubble(message) {
+    const isPlayer = message.sender === 'player';
+    const isSystem = message.sender === 'system' || message.stakeholderId === 'system';
+    
+    if (isPlayer) {
+        // Player Message (Right)
+        return `
+            <div class="chat-bubble flex flex-col items-end mb-4">
+                <div class="bg-[#e5cdcd] px-4 py-3 rounded-[16px] rounded-tr-sm max-w-[80%] shadow-sm">
+                    <p class="text-[14px] font-inter font-medium text-black leading-relaxed">${message.content}</p>
+                </div>
+            </div>
+        `;
+    } else if (isSystem) {
+        // System Message (Center)
+        return `
+            <div class="flex justify-center mb-4 px-4">
+                <div class="bg-[#f0f0f0] px-4 py-2 rounded-full shadow-sm border border-gray-100">
+                    <p class="text-[12px] font-inter text-gray-500 text-center italic">${message.content}</p>
+                </div>
+            </div>
+        `;
+    } else {
+        // Stakeholder Message (Left)
+        const stakeholder = state.stakeholders.find(s => s.id === message.stakeholderId) || { name: 'Unknown', role_id: 'unknown' };
+        const avatarSrc = getAvatarImage(stakeholder.role_id);
+        
+        return `
+            <div class="chat-bubble flex items-start gap-3 mb-4 pl-2">
+                <div class="flex-shrink-0 w-[35px] h-[35px] rounded-full overflow-hidden bg-gray-200 mt-1 cursor-pointer hover:opacity-80 transition-opacity" onclick="showAttributes('${stakeholder.id}')">
+                     <img src="${avatarSrc}" class="w-full h-full object-cover">
+                </div>
+                <div class="flex flex-col max-w-[80%]">
+                    <span class="text-[12px] font-inter text-black mb-1 ml-1">
+                        ${stakeholder.name} 
+                        <span class="text-[10px] text-gray-500 font-light">(${stakeholder.role_name || 'Role'})</span>
+                    </span>
+                    <div class="bg-[#f6f6f6] px-4 py-3 rounded-[16px] rounded-tl-sm shadow-sm">
+                        <p class="text-[14px] font-inter font-medium text-black leading-relaxed">${message.content}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function getAvatarImage(roleId) {
+    // Map roles to the downloaded assets if possible, otherwise generic
+    // We downloaded: isabelle_avatar.png, kenji_avatar.png, david_avatar.png
+    // We'll try to map based on likely role.
+    // Isabelle -> Resident?
+    // David -> Activist?
+    // Kenji -> Councilor?
+    if (roleId.includes('resident') || roleId.includes('community')) return "{{ url_for('static', filename='images/round/isabelle_avatar.png') }}";
+    if (roleId.includes('council') || roleId.includes('planner')) return "{{ url_for('static', filename='images/round/kenji_avatar.png') }}";
+    if (roleId.includes('developer') || roleId.includes('buyer')) return "{{ url_for('static', filename='images/round/david_avatar.png') }}";
+    return "{{ url_for('static', filename='images/round/isabelle_avatar.png') }}"; // Fallback
+}
+
+// --- Interaction Logic ---
+
+// Initialize
+window.addEventListener('load', () => {
+    // Load history
+    if (state.history && state.history.length > 0) {
+        state.messages = state.history;
+    } else {
+        // Add welcome message if empty
+        state.messages.push({
+            id: 'init',
+            sender: 'system',
+            stakeholderId: 'system',
+            content: "Welcome to Round " + state.currentRound + ". The discussion begins now."
+        });
+    }
+    renderMessages();
+});
+
+// Send Message
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Optimistic update
+    state.messages.push({
+        id: Date.now().toString(),
+        sender: 'player',
+        content: text,
+        timestamp: new Date()
+    });
+    input.value = '';
+    renderMessages();
+
+    // API Call
+    showThinking();
+    try {
+        const timeoutMs = 90000; // 90 seconds timeout for intelligent responses
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const response = await fetch('/negotiation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: `action=submit_statement&player_statement=${encodeURIComponent(text)}`,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success') {
+                state.messages = data.history; // Sync
+                state.currentRound = data.new_round;
+                renderMessages();
+            } else if (data.status === 'error') {
+                alert("Error: " + data.message);
+            }
+        } else {
+            const errData = await response.json().catch(() => ({}));
+            const errMsg = errData.message || "Network response was not ok";
+            alert("Server Error: " + errMsg);
+            console.error("Server Error Data:", errData);
+        }
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            alert("Session timed out. Returning to home.");
+            window.location.href = '/home';
+        } else {
+            console.error("Fetch error:", e);
+            alert("Connection failed. Please try again.");
+        }
+    } finally {
+        removeThinking();
+    }
+}
+
+function showThinking() {
+    const container = document.getElementById('messagesContainer');
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.id = 'thinkingIndicator';
+    thinkingDiv.className = 'flex justify-start mb-4 pl-2';
+    thinkingDiv.innerHTML = `
+        <div class="text-[10px] font-inter text-gray-400 italic animate-pulse">
+             All Agents are thinking and preparing...
+        </div>
+    `;
+    container.appendChild(thinkingDiv);
+    
+    const chatArea = document.getElementById('chatArea');
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function removeThinking() {
+    const el = document.getElementById('thinkingIndicator');
+    if (el) el.remove();
+}
+
+document.getElementById('sendBtn').addEventListener('click', sendMessage);
+document.getElementById('messageInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
+
+// Action Buttons
+document.querySelectorAll('.action-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const cost = btn.dataset.cost;
+        
+        // Simple pre-filled texts for MVP
+        const texts = {
+            'gentle': "I'd like to propose a gentle compromise.",
+            'strong': "We must insist on this requirement strongly.",
+            'ally': "I'm looking for allies to support this cause.",
+            'pressure': "This is non-negotiable. We need action now."
+        };
+        
+        document.getElementById('messageInput').value = texts[action] || "";
+    });
+});
+
+// 3D Expand
+document.getElementById('expandBtn').addEventListener('click', () => {
+    document.getElementById('fullscreen3D').classList.remove('hidden');
+});
+document.getElementById('close3D').addEventListener('click', () => {
+    document.getElementById('fullscreen3D').classList.add('hidden');
+});
+
+// --- Attributes Modal Logic ---
+function showAttributes(id) {
+    const stakeholder = state.stakeholders.find(s => s.id === id);
+    if (!stakeholder) return;
+
+    const modal = document.getElementById('attributesModal');
+    const content = document.getElementById('attributesContent');
+    const modalRole = document.getElementById('modalRole');
+    const modalName = document.getElementById('modalName');
+
+    modalRole.textContent = stakeholder.role_name || 'Unknown Role';
+    modalName.textContent = stakeholder.name || 'Unknown';
+
+    // Helper for row
+    const row = (label, value) => `
+        <div class="flex justify-between items-start">
+            <span class="text-[#7D7D7D] font-normal min-w-[120px]">${label}:</span>
+            <span class="text-right font-medium text-[#2C2C2C] flex-1 break-words leading-tight">${value}</span>
+        </div>
+    `;
+
+    content.innerHTML = `
+        ${row('Role', stakeholder.role_name || 'N/A')}
+        ${row('Objectives', stakeholder.objective || 'N/A')}
+        ${row('Initial Stance', stakeholder.initial_stance || 'N/A')}
+        ${row('Influence Score', stakeholder.influence || 0)}
+        ${row('Age', stakeholder.age || 'N/A')}
+        ${row('Gender', stakeholder.gender || 'N/A')}
+        ${row('Local Resident', stakeholder.local_resident || 'N/A')}
+        ${row('Stance Score', stakeholder.stance_score || 0)}
+        ${row('Influence Tokens', (stakeholder.influence_tokens || 0) + ' / ' + (stakeholder.max_tokens || 8))}
+        ${row('Trust Value', stakeholder.trust_value || 50)}
+        ${row('Has Children', stakeholder.has_children || 'N/A')}
+        ${row('Num of Children', stakeholder.num_children || 0)}
+        ${row('Marital Status', stakeholder.marital_status || 'N/A')}
+        ${row('Previous Stance', stakeholder.previous_stance_category || 'N/A')}
+    `;
+
+    modal.classList.remove('hidden');
+}
+
+function closeAttributes() {
+    document.getElementById('attributesModal').classList.add('hidden');
+}
+
+// --- Help System Logic ---
+const helpBtn = document.getElementById("help-btn");
+const helpOverlay = document.getElementById("help-overlay");
+const helpClose = document.getElementById("help-close");
+
+if (helpBtn && helpOverlay && helpClose) {
+    helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
+    helpClose.onclick = () => helpOverlay.classList.add("hidden");
+    
+    // Close when clicking outside content
+    helpOverlay.onclick = (e) => {
+        if (e.target === helpOverlay) {
+            helpOverlay.classList.add("hidden");
+        }
+    };
+}
+
+// --- Action Button Tooltips ---
+const actionDescriptions = {
+    'gentle': '<strong>Gentle Persuasion (1T)</strong>A soft attempt to shift someone’s stance; high success rate, small effect.',
+    'strong': '<strong>Strong Persuasion (3T)</strong>Risky but impactful. May backfire if target opposes you.',
+    'ally': '<strong>Recruit Ally (4T)</strong>Bring another player onto your side; increases your negotiation weight.',
+    'pressure': '<strong>Pressure (2T)</strong>Use political, media, or community pressure. Effective but may reduce trust.'
+};
+
+const tooltip = document.getElementById('action-tooltip');
+const buttons = document.querySelectorAll('.action-btn');
+
+function showTooltip(e, action) {
+    if (!tooltip || !actionDescriptions[action]) return;
+    
+    tooltip.innerHTML = actionDescriptions[action];
+    tooltip.style.display = 'block';
+    // Force a reflow to get dimensions
+    tooltip.offsetHeight;
+    tooltip.style.opacity = '1';
+    
+    positionTooltip(e);
+}
+
+function hideTooltip() {
+    if (!tooltip) return;
+    tooltip.style.opacity = '0';
+    setTimeout(() => {
+        if (tooltip.style.opacity === '0') {
+            tooltip.style.display = 'none';
+        }
+    }, 200);
+}
+
+function positionTooltip(e) {
+    if (!tooltip) return;
+    
+    // Get position from mouse event or touch event
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+
+    // Position above the cursor/finger
+    const tooltipRect = tooltip.getBoundingClientRect();
+    let top = clientY - tooltipRect.height - 15;
+    let left = clientX - (tooltipRect.width / 2);
+
+    // Boundary checks
+    if (left < 10) left = 10;
+    if (left + tooltipRect.width > window.innerWidth - 10) {
+        left = window.innerWidth - tooltipRect.width - 10;
+    }
+    if (top < 10) top = clientY + 20; // Show below if too close to top
+
+    tooltip.style.top = `${top}px`;
+    tooltip.style.left = `${left}px`;
+}
+
+buttons.forEach(btn => {
+    const action = btn.dataset.action;
+    
+    // Mouse events
+    btn.addEventListener('mouseenter', (e) => showTooltip(e, action));
+    btn.addEventListener('mouseleave', hideTooltip);
+    btn.addEventListener('mousemove', positionTooltip);
+
+    // Touch events
+    btn.addEventListener('touchstart', (e) => {
+        // Don't prevent default immediately to allow clicking
+        showTooltip(e, action);
+    }, { passive: true });
+    
+    btn.addEventListener('touchend', hideTooltip);
+});
+
+</script>
+</body>
+</html>

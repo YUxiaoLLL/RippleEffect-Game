@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ripple Effect - Home</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800&family=Righteous&family=Rethink+Sans:wght@600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #202020; font-family: 'Inter', sans-serif; }
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-rethink { font-family: 'Rethink Sans', sans-serif; }
+
+        /* Help System Styles */
+        .help-icon {
+            position: absolute;
+            top: 38px;
+            right: 15px;
+            width: 31px;
+            height: 31px;
+            border-radius: 50%;
+            border: 1.5px solid #ccc;
+            color: #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.35);
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 50;
+            transition: background 0.2s;
+        }
+        
+        .help-icon:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: white;
+            color: white;
+        }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.3s ease;
+        }
+
+        .help-overlay.hidden {
+            display: none;
+            opacity: 0;
+        }
+
+        .help-content {
+            width: 80%;
+            max-width: 360px;
+            background: #fff;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .help-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 16px;
+            font-weight: 800;
+        }
+        
+        .help-content p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        .help-content ul {
+            text-align: left;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 12px;
+            padding-left: 20px;
+            list-style-type: disc;
+        }
+
+        .close-btn {
+            margin-top: 18px;
+            padding: 10px 24px;
+            border-radius: 12px;
+            border: none;
+            background: #E5C2A5;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dcbba0;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+    
+    <div class="relative w-[430px] h-[932px] bg-white overflow-hidden shadow-2xl">
+        
+        <!-- Back Button with Confirmation -->
+        <div onclick="confirmGiveUp()" class="absolute top-[38px] left-[15px] w-[31px] h-[31px] cursor-pointer z-50 hover:opacity-80 transition-opacity">
+             <div class="absolute inset-0 bg-[#d9d9d9] rounded-[10px]"></div>
+             <div class="absolute inset-0 flex items-center justify-center">
+                <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.5 14.5L2 8L8.5 1.5" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+             </div>
+        </div>
+
+        <!-- Background Texture -->
+        <div class="absolute inset-0 pointer-events-none">
+             <div class="absolute left-1/2 top-1/2 w-[956px] h-[440px] -translate-x-1/2 -translate-y-1/2 rotate-[270deg]">
+                <img src="{{ url_for('static', filename='images/home/bg_texture.png') }}" class="w-[191%] max-w-none h-[137%] object-cover opacity-80">
+             </div>
+        </div>
+        
+        <!-- Global Help Icon -->
+        <div id="global-help-btn" class="help-icon">?</div>
+        
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="help-overlay hidden">
+          <div class="help-content">
+            <h2>Round Overview</h2>
+            <p><strong>The game lasts 8 rounds.</strong></p>
+            <p>Each round you can spend <strong>Influence Tokens</strong> to persuade, pressure, or recruit others.</p>
+            <p>Your goal is to shape 3 negotiation outcomes:</p>
+            <ul>
+                <li>Affordable Housing %</li>
+                <li>Cultural Venue Use</li>
+                <li>Housing Mix</li>
+            </ul>
+            <p>Decisions affect the 3D scene above in real time.</p>
+        
+            <button id="help-close" class="close-btn">Got it</button>
+          </div>
+        </div>
+
+        <!-- Top Visualization Panel (3D View) -->
+        <!-- Aligned width to 356px to match profile section as requested previously -->
+        <div class="absolute top-[57px] left-1/2 -translate-x-1/2 w-[356px] h-[263px] bg-neutral-50 rounded-[30px] shadow-inner overflow-hidden">
+             <iframe src="/3d/" class="w-full h-full border-0 pointer-events-none"></iframe>
+             <div class="absolute inset-0 pointer-events-none shadow-[inset_-3px_-5px_11.6px_7px_rgba(0,0,0,0.09)]"></div>
+        </div>
+
+        <!-- Stakeholders Section -->
+        <!-- Width: 356px, Height: 140px -->
+        <!-- Moved to 324px so that the Green Box (starts after title) visually sits at ~340px (20px gap from Vis) -->
+        <div class="absolute top-[324px] left-1/2 -translate-x-1/2 w-[356px] h-[140px]">
+            <div class="text-[10px] font-inter text-[#899e9f] mb-1 pl-2">People also within the Rounds</div>
+            
+            <!-- Stakeholder Card -->
+            <!-- Border: 1px solid #373737, Bg: #556F59, Blur: 2.05px -->
+            <div class="w-full h-full bg-[#556F59] backdrop-blur-[2.05px] rounded-[30px] border border-[#373737] relative overflow-hidden flex flex-col items-center pt-3">
+                <div class="flex flex-col gap-1.5 items-center w-full">
+                    {% for char in top_stakeholders %}
+                    <!-- Character Strip -->
+                    <!-- Width: 330px, Height: 25px, Bg: #F8F4DD, Blur: 2.2px -->
+                    <div class="relative w-[330px] h-[25px] flex items-center px-3 bg-[#F8F4DD] backdrop-blur-[2.2px] rounded-[30px] shadow-sm">
+                        <!-- Role -->
+                        <span class="font-rethink font-medium text-[10px] text-[#899e9f] w-[80px] truncate">{{ char.role_name }}</span>
+                        
+                        <!-- Stance -->
+                        {% set stance_letter = char.stance %}
+                        {% set stance_color = '#69c86b' if char.stance == 'Support' else ('#c8697c' if char.stance == 'Oppose' else '#dbc17b') %}
+                        <span class="font-rethink font-semibold text-[10px] text-center w-[60px]" style="color: {{ stance_color }}">{{ char.stance }}</span>
+                        
+                        <!-- Name -->
+                        <span class="font-righteous text-[12px] text-black ml-auto">{{ char.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Horizontal Line -->
+                <!-- Width: 356px (full width of parent), Height: 1px, Bg: #F8F8F8 -->
+                <div class="absolute bottom-[28px] w-full h-[1px] bg-[#F8F8F8]"></div>
+
+                <!-- More Profiles Button -->
+                <a href="{{ url_for('characters_profiles') }}" class="absolute bottom-0 w-full h-[28px] flex items-center justify-center gap-2 cursor-pointer opacity-80 hover:opacity-100 transition-opacity">
+                    <!-- SVG Arrow -->
+                    <div class="w-[24px] h-[12px] flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="9" viewBox="0 0 15 9" fill="none">
+                          <path d="M8.34153 7.86611C7.58999 8.51696 6.47446 8.51696 5.72292 7.86611L0.695062 3.51185C-0.704745 2.29959 0.152603 2.56839e-07 2.00437 4.18726e-07L12.0601 1.29782e-06C13.9118 1.45971e-06 14.7692 2.29959 13.3694 3.51186L8.34153 7.86611Z" fill="#CBC0C0"/>
+                        </svg>
+                    </div>
+                    <span class="font-rethink text-[10px] text-[#CBC0C0]">More Profiles</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Rounds Timeline Card -->
+        <!-- Width: 244px, Height: 352px, Border: 1.2px #C8C8C8, Bg: #FFFAE4, Shadow inset -->
+        <!-- Moved to 500px for even spacing (20px gap from Stakeholders) -->
+        <div class="absolute top-[500px] left-1/2 -translate-x-1/2 w-[244px] h-[352px] bg-[#FFFAE4] rounded-[30px] p-5 border-[1.2px] border-[#C8C8C8] shadow-[inset_-3px_-4px_14.4px_0px_rgba(0,0,0,0.25)] flex flex-col">
+            <div class="text-[9px] font-inter text-[#9f9489] mb-4">Starting from round 1...</div>
+            
+            <div class="flex flex-col gap-3">
+                 {% for i in range(1, 9) %}
+                    {% set is_past = i < current_round %}
+                    {% set is_current = i == current_round %}
+                    {% set is_future = i > current_round %}
+                    
+                    <div class="flex items-center justify-between relative h-[20px]">
+                        <!-- Round Label -->
+                        <!-- Current: #F4B455, Past: #6E6963 -->
+                        <span class="font-rethink font-semibold text-[14px] tracking-[1.12px] leading-[13px]
+                            {{ 'text-[#F4B455]' if is_current else ('text-[#6E6963]' if is_past else 'text-[#D1D1D1]') }}">
+                            Round {{ i }}
+                        </span>
+
+                        <!-- Progress Bar -->
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-[60px] h-[3px] rounded-full bg-[#E5E5E5] overflow-hidden">
+                                <div class="h-full rounded-full {{ 'bg-[#80d16a]' if is_past or is_current else 'transparent' }}" 
+                                     style="width: {{ '100%' if is_past else ('40%' if is_current else '0%') }}"></div>
+                            </div>
+                            
+                            <!-- Arrow Indicator for Current -->
+                            <div class="w-[8px] flex justify-center">
+                                {% if is_current %}
+                                <span class="text-[10px] text-[#D1D1D1]">▶</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Click Overlay for Current -->
+                        {% if is_current %}
+                        <a href="{{ url_for('negotiation') }}" class="absolute inset-0 cursor-pointer z-10"></a>
+                        {% endif %}
+                    </div>
+                 {% endfor %}
+            </div>
+        </div>
+
+        <!-- Simplified Footer Stats -->
+        <!-- Aligned Role/Tokens labels left, Values right -->
+        <!-- Bottom 20px for even spacing (20px gap from Rounds) -->
+        <div class="absolute bottom-[20px] w-full flex justify-center">
+            <div class="w-[200px] flex flex-col gap-1">
+                <div class="flex justify-between items-center">
+                    <span class="font-inter text-[10px] font-normal leading-[13px] tracking-[0.8px] text-[#E34B2A]">Role:</span>
+                    <span class="font-righteous text-[14px] text-black">{{ player.role_name }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="font-inter text-[10px] font-normal leading-[13px] tracking-[0.8px] text-[#E34B2A]">Influence Tokens:</span>
+                    <span class="font-righteous text-[14px] text-black">{{ player.influence_tokens }}T</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function confirmGiveUp() {
+            if (confirm("Are you sure you want to give up? All progress will be lost.")) {
+                window.location.href = "{{ url_for('role_selection') }}";
+            }
+        }
+
+        // Help System Logic
+        const helpBtn = document.getElementById("global-help-btn");
+        const helpOverlay = document.getElementById("help-overlay");
+        const helpClose = document.getElementById("help-close");
+
+        if (helpBtn && helpOverlay && helpClose) {
+            helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
+            helpClose.onclick = () => helpOverlay.classList.add("hidden");
+            
+            // Close when clicking outside content
+            helpOverlay.onclick = (e) => {
+                if (e.target === helpOverlay) {
+                    helpOverlay.classList.add("hidden");
+                }
+            };
+        }
+    </script>
+</body>
+</html>

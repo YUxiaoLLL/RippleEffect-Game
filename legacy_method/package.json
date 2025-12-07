@@ -1,0 +1,16 @@
+{
+  "name": "ripple-effect-converter",
+  "version": "1.0.0",
+  "description": "DXF to JSON converter for Ripple Effect",
+  "main": "convert_dxf_to_json.js",
+  "scripts": {
+    "convert": "node convert_dxf_to_json.js",
+    "watch": "node watch.js"
+  },
+  "dependencies": {
+    "dxf-parser": "^1.1.2",
+    "uuid": "^9.0.1",
+    "earcut": "^2.2.4",
+    "chokidar": "^3.5.3"
+  }
+}

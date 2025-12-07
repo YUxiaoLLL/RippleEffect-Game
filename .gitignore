@@ -1,0 +1,17 @@
+# Security
+.env
+
+# Python / Flask
+__pycache__/
+*.py[cod]
+.flask_session/
+.venv/
+venv/
+
+# System
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+node_modules/

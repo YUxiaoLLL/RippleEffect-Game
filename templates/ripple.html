@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ripple Effect - 2D Visualization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h1>DXF Visualization</h1>
+
+    <div class="visualization">
+        <div id="plan-view-container">
+            <h3>Plan View</h3>
+        </div>
+        <div id="skyline-view-container">
+            <h3>Skyline View (Future)</h3>
+        </div>
+    </div>
+
+    <div class="command-interface" style="margin: 20px 0;">
+        <h3>Update Plan with Natural Language</h3>
+        <div>
+            <input type="text" id="command-input" placeholder="e.g., change hospital to hotel" style="width: 300px; padding: 8px; font-size: 14px;">
+            <button id="submit-command" style="padding: 8px 12px; font-size: 14px;">Update</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <button id="undo-button" style="padding: 8px 12px;">Undo (Last)</button>
+            <button id="redo-button" style="padding: 8px 12px;">Redo (Next)</button>
+            <button id="reset-button" style="padding: 8px 12px;">Reset (Clear)</button>
+            <button id="original-button" style="padding: 8px 12px;">Show Original (Before)</button>
+        </div>
+        <p id="status-message" style="margin-top: 10px; font-style: italic; color: #555;"></p>
+    </div>
+
+    <div class="controls">
+        <p>Use the mouse wheel to zoom and drag to pan the view.</p>
+    </div>
+
+    <script>
+    window.onerror = function (msg, src, line, col, err) {
+      const div = document.createElement('div');
+      div.style='position:fixed;inset:0;background:#300;color:#fff;padding:16px;font:14px/1.4 monospace;z-index:99999';
+      div.textContent = 'JS Error: ' + msg + ' @ ' + src + ':' + line;
+      document.body.appendChild(div);
+    };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="https://unpkg.com/earcut@2.2.4/dist/earcut.min.js"></script>
+    <script src="{{ url_for('static', filename='js/ripple.js') }}"></script>
+</body>
+</html>
