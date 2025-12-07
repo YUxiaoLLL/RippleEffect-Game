@@ -64,5 +64,7 @@ def generate_dna_persona(role_id, role_name):
         "system_prompt": system_prompt_addendum,
         "flexibility": flexibility,
         "bio": narrative_bio,
-        "style": style_key
+        "style": style_key,
+        "pain_point": pain_point, # Added for LLM Prompt
+        "quirk": quirk            # Added for LLM Prompt
     }

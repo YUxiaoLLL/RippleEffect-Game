@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from models import SceneState, Block, Action, SceneUpdate
 from agents.persona_engine import generate_dna_persona
+from agents.persona_data import STYLES # Import STYLES dictionary
 # import ezdxf
 from werkzeug.utils import secure_filename
 
@@ -130,7 +131,9 @@ def load_scenario_data(filename):
         data = json.load(f)
     return data
 
-SCENARIO_DATA = load_scenario_data('scenarios/canadawater.json')
+SCENARIO_DATA = load_scenario_data(os.path.join('scenarios', 'canadawater.json'))
+MASTERPLAN_DATA = load_scenario_data(os.path.join('scenarios', 'masterplan.json')) # Load Masterplan Data for Backend & AI
+
 ROLES = SCENARIO_DATA.get('roles', {})
 MICRO_EVENTS = SCENARIO_DATA.get('micro_events', [])
 CONTEXT = SCENARIO_DATA.get('context', {})
@@ -914,31 +917,58 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
         # Climate modifier
         if climate_score < 30: emotion += " (Tense Atmosphere)"
         
-        # --- 3. PROMPT ENGINEERING ---
+        # --- 3. PROMPT ENGINEERING (ULTIMATE VERSION) ---
         issues_summary = (
             f"- Affordable Housing: {issues.get('affordable_housing', {}).get('share_percentage', 'N/A')}% share.\n"
             f"- Cultural Venue: {issues.get('cultural_venue', {}).get('scale', 'N/A')} scale.\n"
         )
         
-        # Fetch static role objective
         role_objective = ROLES.get(ai['role_id'], {}).get('objective', 'To participate in the negotiation.')
+        
+        # Inject Style Details
+        style_dna = STYLES.get(persona['style'], {})
+        style_desc = style_dna.get('desc', 'Standard')
+        style_keywords = ", ".join(style_dna.get('keywords', []))
+        style_grammar = style_dna.get('grammar', 'Standard English')
+
+        # Inject Masterplan Context with AI Perception (Simple Logic)
+        masterplan_context = "1. **The Map (Spatial Reality)**:\n"
+        for plot_id, plot_data in MASTERPLAN_DATA.items():
+            if 'description' in plot_data:
+                # Simple sentiment based on role (Mock logic for now, can be expanded)
+                impact = "Neutral"
+                if ai['role_id'] == 'community_activist' and 'luxury' in plot_data.get('ai_tags', []):
+                    impact = "Negative (Symbol of Inequality)"
+                elif ai['role_id'] == 'developer' and 'luxury' in plot_data.get('ai_tags', []):
+                    impact = "Positive (High ROI)"
+                
+                masterplan_context += f"   - {plot_data['name']}: {plot_data['description']} -> Impact on you: {impact}\n"
 
         system_prompt = (
-            f"You are a character in an urban planning simulation.\n\n"
-            f"**Base Role Directive:** {role_objective}\n"
-            f"{persona['system_prompt']}\n" # Injects detailed DNA
-            f"--- CURRENT CONTEXT ---\n"
-            f"Your Role Name: {ai['name']}\n"
-            f"Current Deal State:\n{issues_summary}\n"
-            f"Your Current Stance Score: {current_score}/100. Emotion: {emotion}.\n"
-            f"Player just said: '{player_statement}'\n\n"
-            f"--- RESPONSE INSTRUCTIONS ---\n"
-            f"1. **Be In Character:** Use your DNA 'Speaking Style' ({persona['style']}) and 'Quirk'.\n"
-            f"2. **Reference Your Life:** Mention your specific 'Bio/Motivation' to justify your view. Do NOT be generic.\n"
-            f"3. **Length:** Keep it under 3 sentences (approx 40 words). Be punchy.\n"
-            f"4. **Scoring:** At the very end, on a new line, write: SCORE_CHANGE: +/-[0-10].\n"
-            f"   - If the player ignores your 'Pain Point', give a negative score.\n"
-            f"   - If they address your 'Focus', give a positive score."
+            f"[System]\n"
+            f"You are interacting in a high-stakes urban planning simulation called 'Ripple Effect'.\n"
+            f"Do not break character. Do not be polite unless your character is polite.\n\n"
+            f"[Character Profile]\n"
+            f"- Role: {ai['name']} ({ROLES.get(ai['role_id'], {}).get('name')})\n"
+            f"- Core Objective: {role_objective}\n"
+            f"- Backstory: {persona['bio']}\n"
+            f"- Deepest Fear (Pain Point): {persona['pain_point']}\n\n"
+            f"[Speaking Style Guidelines]\n"
+            f"- Description: {style_desc}\n"
+            f"- Syntax/Grammar: {style_grammar}\n"
+            f"- Key Vocabulary: {style_keywords}\n\n"
+            f"[Contextual Awareness]\n"
+            f"{masterplan_context}\n"
+            f"2. **The Table (Negotiation State)**:\n"
+            f"   - Current Deal: {issues_summary.replace(chr(10), ', ')}\n"
+            f"   - Current Stance Score: {current_score}/100 ({emotion})\n"
+            f"   - Trust Level: {emotion}\n\n"
+            f"[Task]\n"
+            f"1. **Think First**: Analyze the player's proposal. Is it a distraction? Does it hurt your objective?\n"
+            f"2. **Select Strategy**: If trust is low, be skeptical. If high, be collaborative but demanding.\n"
+            f"3. **Draft Response**: Use your Style. MUST reference a specific Plot ID if relevant.\n\n"
+            f"[Output Format - JSON]\n"
+            f"Return a JSON object with keys: 'thought_process', 'dialogue', 'score_delta' (integer -10 to 10), 'animation_trigger' (optional string)."
         )
 
         if not client:
@@ -951,45 +981,41 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
             continue
 
         try:
-            print(f"  [System] Sending request to OpenAI for {ai['name']}...")
+            print(f"  [System] Sending JSON request to OpenAI for {ai['name']}...")
             completion = client.chat.completions.create(
                 model="gpt-4o-mini", # Switched to 4o-mini for speed/cost/availability
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Dialogue History:\n{history_text}\n\nLatest Player Input: {player_statement}\n\nYour Reply:"}
+                    {"role": "user", "content": f"Dialogue History:\n{history_text}\n\nPlayer says: \"{player_statement}\""}
                 ],
-                max_tokens=150,
-                temperature=0.95 
+                max_tokens=250,
+                temperature=0.9,
+                response_format={"type": "json_object"}
             )
             
-            ai_response_full = completion.choices[0].message.content.strip()
+            ai_response_json = json.loads(completion.choices[0].message.content)
             
-            # --- 4. PARSE RESPONSE & SCORE ---
-            ai_dialogue = ai_response_full
-            score_change = 0
+            # --- 4. PARSE JSON RESPONSE ---
+            ai_dialogue = ai_response_json.get('dialogue', '...')
+            thought_process = ai_response_json.get('thought_process', '')
+            score_change = int(ai_response_json.get('score_delta', 0))
             
-            if 'SCORE_CHANGE:' in ai_response_full:
-                parts = ai_response_full.split('SCORE_CHANGE:')
-                ai_dialogue = parts[0].strip()
-                try:
-                    raw_score = int(parts[1].strip().split()[0]) 
-                    # Apply sensitivity from global ROLES
-                    sensitivity = ROLES.get(ai['role_id'], {}).get('ai_response_sensitivity', 1.0)
-                    score_change = int(raw_score * sensitivity)
-                except:
-                    print(f"    - Error parsing score for {ai['name']}")
-                    score_change = 0
+            # Apply sensitivity from global ROLES
+            sensitivity = ROLES.get(ai['role_id'], {}).get('ai_response_sensitivity', 1.0)
+            score_change = int(score_change * sensitivity)
             
             # Clamp score
             new_score = max(0, min(100, current_score + score_change))
             
-            print(f"  -> {ai['name']} ({persona['style']}): \"{ai_dialogue[:50]}...\" (Score: {score_change})")
+            print(f"  -> {ai['name']} Thought: {thought_process}")
+            print(f"  -> {ai['name']} Says: \"{ai_dialogue[:50]}...\" (Score: {score_change})")
             
             responses_data[ai['id']] = {
                 'response': ai_dialogue,
                 'new_score': new_score,
                 'score_change': score_change,
-                'persona_summary': persona['summary'] 
+                'persona_summary': persona['summary'],
+                'thought_process': thought_process # Optional: Store for debugging/display
             }
 
         except Exception as e:
@@ -1601,14 +1627,8 @@ def get_3d_layer(layer_name):
 @app.route('/api/masterplan')
 def get_masterplan_data():
     """Serves the masterplan semantic data (Plot mappings)."""
-    # Use absolute path defined at setup
-    path = os.path.join(THREE_DATA_DIR, 'masterplan_data.json')
-    if not os.path.exists(path):
-        return jsonify({})
-    
-    with open(path, 'r') as f:
-        data = json.load(f)
-    return jsonify(data)
+    # Now served directly from backend memory (Single Source of Truth)
+    return jsonify(MASTERPLAN_DATA)
 
 @app.route('/game')
 def game():
