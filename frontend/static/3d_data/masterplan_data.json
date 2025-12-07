@@ -1,0 +1,47 @@
+{
+  "A1": {
+    "name": "The Founding (Plot A1)",
+    "type": "residential_luxury",
+    "description": "35-storey landmark tower. High controversy due to height.",
+    "ai_tags": ["high_density", "luxury", "skyline_impact"],
+    "target_irr": 0.11,
+    "ids": ["courtyard_58", "water_11", "water_10"]
+  },
+  "A2": {
+    "name": "The Workspace (Plot A2)",
+    "type": "commercial_office",
+    "description": "Sustainable workspace with active ground floor.",
+    "ai_tags": ["employment", "sustainable", "retail"],
+    "ids": [
+      "osgb1000041683238", 
+      "osgb1000041683234", 
+      "osgb1000041683235", 
+      "osgb1000041683243", 
+      "osgb1000041683239", 
+      "osgb1000041683249", 
+      "osgb1000041683245", 
+      "osgb1000041683241", 
+      "osgb1000041683242", 
+      "osgb1000041683237"
+    ]
+  },
+  "K1": {
+    "name": "Zone K1",
+    "type": "residential_affordable",
+    "description": "Proposed affordable housing block adjacent to the main dock.",
+    "ai_tags": ["affordable_housing", "social_impact", "density"],
+    "ids": ["courtyard_16"]
+  },
+  "Paper_Yard": {
+    "name": "The Paper Yard",
+    "type": "education_lab",
+    "description": "Modular campus for TEDI-London.",
+    "ai_tags": ["education", "innovation", "modular"],
+    "ids": [
+      "osgb5000005285320741", 
+      "osgb5000005290185913", 
+      "osgb5000005290185918", 
+      "osgb1000041729343"
+    ]
+  }
+}
