@@ -5,7 +5,7 @@ def generate_dna_persona(role_id, role_name):
     """
     Synthesizes a unique character based on DNA factors tailored to the role.
     """
-    # 1. 获取该角色的约束条件 (Constraints)
+    # 1. Access the Constraints of the Agent (Constraints)
     mapping = ROLE_MAPPING.get(role_id, {
         "allowed_origins": ["local_deep", "local_recent", "outsider"],
         "allowed_pains": ["precariat", "middle_class", "wealthy", "corporate"],
@@ -13,7 +13,7 @@ def generate_dna_persona(role_id, role_name):
         "default_flexibility": [3, 8]
     })
 
-    # 2. 抽取 DNA 因子 (Rolling the dice)
+    # 2. Pick DNA Combination (Rolling the dice)
     
     # Factor A: Origin
     origin_key = random.choice(mapping["allowed_origins"])
@@ -37,15 +37,15 @@ def generate_dna_persona(role_id, role_name):
     flex_range = mapping["default_flexibility"]
     flexibility = random.randint(flex_range[0], flex_range[1])
 
-    # 3. 合成叙事文本 (Synthesize Narrative)
-    # 这是一个“有理有据”的自我介绍，将所有因子串联起来
+    # 3. Synthesize Narrative
+    # This is a "rationally grounded" self-introduction that weaves all factors together
     narrative_bio = (
         f"I am a {life_stage['stage']} who {origin_story.lower()} "
         f"My primary focus right now is {life_stage['focus'].lower()}. "
         f"My biggest worry regarding this project is {pain_point.lower()} "
     )
 
-    # 4. 构建 System Prompt 指令块
+    # 4. Build System Prompt block
     system_prompt_addendum = (
         f"--- CHARACTER DNA PROFILE ---\n"
         f"**Bio & Motivation:** {narrative_bio}\n"

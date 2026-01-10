@@ -1,7 +1,7 @@
 # persona_data.py
 
 # --- A. ORIGINS (出身与根基) ---
-# 决定角色对该地区的“所有权感”
+# Determine the character's sense of "ownership" in the region
 ORIGINS = {
     "local_deep": [
         "Born and bred in Bermondsey. Family worked in the docks for generations.",
@@ -21,7 +21,7 @@ ORIGINS = {
 }
 
 # --- B. LIFE STAGE (人生阶段) ---
-# 决定角色的紧迫感和关注点
+# Determines the character's sense of urgency and focus points
 LIFE_STAGES = [
     {"stage": "Teenager(14s-18s)", "focus": "things to do activities", "tone_mod": "Neutral"}, #willing to be heard 
     {"stage": "Young Adult (20s)", "focus": "Affordability, Nightlife, Job opportunities", "tone_mod": "Energetic or Anxious"},
@@ -30,15 +30,15 @@ LIFE_STAGES = [
     {"stage": "Retiree (60s+)", "focus": "Healthcare, Community access, Peace and Quiet, Heritage", "tone_mod": "Nostalgic or Stubborn"}
 ]
 
-# --- C. SOCIO-ECONOMIC & PAIN POINTS (社会阶层与痛点) ---
-# 决定角色最害怕失去什么 (Loss Aversion)
+# --- C. SOCIO-ECONOMIC & PAIN POINTS (Socio-economic class and pain points) ---
+# Determines what the character fears losing most (Loss Aversion)
 PAIN_POINTS = {
-    "precariat": [ # 不稳定阶层
+    "precariat": [ # Unstable class
         "Terrified of rent increases forcing them out.",
         "Relies on local food banks or cheap markets which are disappearing.",
         "Fear of social cleansing and losing their support network."
     ],
-    "middle_class": [ # 中产阶级
+    "middle_class": [ # Middle class
         "Worried about negative equity on their mortgage.",
         "Concerned about the 'character' of the neighborhood changing too fast.",
         "Fears construction noise disrupting their work-from-home setup."
@@ -52,22 +52,22 @@ PAIN_POINTS = {
     #old resident
     # scared of change in fabric of the neighbourhood and losing key services
     # access to old age care such as alzheimers and dementia services
-    # concers around disabled access and wheelchair accessibility
+    # concerns around disabled access and wheelchair accessibility
 
-    "wealthy": [ # 富裕阶层
+    "wealthy": [ # Wealthy class
         "Concerns about 'overshadowing' affecting their penthouse view.",
         "Wants to ensure 'exclusive' amenities remain exclusive.",
         "Fears the development will attract 'anti-social behavior'."
     ],
-    "corporate": [ # 企业/开发者视角
+    "corporate": [ # Corporate/Developer perspective
         "Fear of the project becoming financially unviable (ROI drop).",
         "Fear of bad PR or brand damage.",
         "Fear of endless planning delays killing the momentum."
     ]
 }
 
-# --- D. COMMUNICATION STYLE (沟通风格 DNA) ---
-# 决定 LLM 的说话方式
+# --- D. COMMUNICATION STYLE (Communication Style DNA) ---
+# Determines how the LLM speaks
 STYLES = {
     "academic": {
         "desc": "Intellectual, uses jargon, structured.",
@@ -97,8 +97,8 @@ STYLES = {
     #multicultural background 
 }
 
-# --- E. PERSONALITY QUIRKS (性格怪癖) ---
-# 让角色感觉像真人，而不是机器
+    # --- E. PERSONALITY QUIRKS (Personality Quirks) ---
+    # Makes the character feel human, not a machine
 QUIRKS = [
     "Constantly mentions a specific pet (e.g., 'My dog needs grass!').",
     "Obsessed with sunlight/vitamin D.",
@@ -114,26 +114,26 @@ QUIRKS = [
     "Values local history and cultural preservation."
 ]
 
-# --- F. ROLE ARCHETYPE MAPPING (角色映射表) ---
-# 定义哪些角色倾向于拥有哪些 DNA 因子 (权重映射)
+# --- F. ROLE ARCHETYPE MAPPING (Role Archetype Mapping) ---
+# Defines which roles tend to have which DNA factors (weight mappings)
 ROLE_MAPPING = {
     "developer": {
         "allowed_origins": ["outsider", "local_recent"],
         "allowed_pains": ["corporate"],
-        "allowed_styles": ["corporate", "academic"], # 开发商通常不说街头俚语
-        "default_flexibility": [2, 6] # 比较难搞
+        "allowed_styles": ["corporate", "academic"], # Developers don't typically use street slang
+        "default_flexibility": [2, 6] # More difficult to negotiate with
     },
     "community_activist": {
         "allowed_origins": ["local_deep", "local_recent"],
         "allowed_pains": ["precariat", "middle_class", "single_mother"],
         "allowed_styles": ["activist", "street", "academic"],
-        "default_flexibility": [1, 5] # 非常顽固
+        "default_flexibility": [1, 5] # Very stubborn
     },
     "council_planner": {
         "allowed_origins": ["outsider", "local_recent"],
-        "allowed_pains": ["corporate", "middle_class"], # 担心政治风险
+        "allowed_pains": ["corporate", "middle_class"], # Concerned about political risk
         "allowed_styles": ["corporate", "nimby", "academic"],
-        "default_flexibility": [4, 8] # 倾向于妥协
+        "default_flexibility": [4, 8] # Tend to compromise
     },
     "resident_homeowner": {
         "allowed_origins": ["local_deep", "local_recent"],
