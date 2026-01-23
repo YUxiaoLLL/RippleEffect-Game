@@ -37,6 +37,9 @@ import sqlite3
 import datetime
 from urllib.parse import urlparse
 
+# M4: Database Path Configuration (Render Persistence)
+DB_PATH = os.environ.get('DB_PATH', 'ripple.db')
+
 # Try importing psycopg2 for Postgres (Production)
 try:
     import psycopg2
@@ -57,7 +60,7 @@ def get_db_connection():
             print(f"Postgres connection failed: {e}. Falling back to SQLite.")
             
     # Fallback to SQLite
-    conn = sqlite3.connect('ripple.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn, 'sqlite'
 
@@ -96,7 +99,7 @@ def init_db():
                 );
             """)
             conn.commit()
-            print("Initialized SQLite database (ripple.db).")
+            print(f"Initialized SQLite database ({DB_PATH}).")
     except Exception as e:
         print(f"DB Init Error: {e}")
     finally:
