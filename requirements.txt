@@ -8,3 +8,6 @@ werkzeug
 geopandas
 fiona
 shapely
+eventlet
+gunicorn
+psycopg2-binary

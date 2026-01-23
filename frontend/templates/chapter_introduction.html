@@ -13,9 +13,19 @@
         .text-shadow-custom { text-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25); }
         /* Inner Shadow for Image */
         .shadow-inner-custom { box-shadow: inset -4px -4px 3.7px 1px rgba(0, 0, 0, 0.36); }
+        
+        /* Onboarding Overlay Animation */
+        @keyframes fadeOutDelay {
+            0%, 85% { opacity: 1; pointer-events: auto; }
+            100% { opacity: 0; pointer-events: none; }
+        }
+        .animate-onboarding {
+            animation: fadeOutDelay 4s forwards;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+
 
     <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl">
         
@@ -100,7 +110,7 @@
                 </div>
 
                 <!-- Start Button -->
-                <a href="{{ url_for('role_selection') }}" class="border border-[#f2e5df] border-[1.5px] rounded-[20px] w-[80px] h-[29px] flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
+                <a href="{{ url_for('room_gate') }}" class="border border-[#f2e5df] border-[1.5px] rounded-[20px] w-[80px] h-[29px] flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
                     <p class="font-righteous text-[20px] leading-[20px] tracking-[1.6px] text-white text-shadow-custom">
                         START
                     </p>
@@ -109,7 +119,23 @@
             </div>
 
         </div>
+        <!-- Onboarding Overlay (Bottom) -->
+        <div id="onboarding-overlay" class="absolute bottom-[40px] left-0 w-full flex justify-center z-50 pointer-events-none transition-opacity duration-1000">
+             <div class="bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl max-w-[340px] text-center">
+                <p class="font-righteous text-[#F2E6C2] text-[16px] leading-relaxed tracking-wide">
+                    Different groups want different futures, and this is the situation you are walking into.
+                </p>
+            </div>
+        </div>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const overlay = document.getElementById('onboarding-overlay');
+                if (overlay) overlay.style.opacity = '0';
+            }, 3500);
+        });
+    </script>
 </body>
 </html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lobby</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Righteous&family=Pridi:wght@600&display=swap" rel="stylesheet">
+    <style>
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+        .font-pridi { font-family: 'Pridi', serif; }
+        .text-shadow { text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+
+    <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl flex flex-col">
+        
+        <!-- Header -->
+        <div class="pt-8 px-6 pb-4 border-b border-white/10 bg-[#202020] z-10">
+            <div class="flex justify-between items-start mb-2">
+                <div>
+                    <h1 class="font-righteous text-[#F2E6C2] text-[24px]">Lobby</h1>
+                    <p class="font-inter text-white/50 text-[12px]">Room ID</p>
+                    <p class="font-mono text-[#D97B48] text-[24px] font-bold tracking-widest select-all cursor-pointer" onclick="copyRoomId()">{{ room_id }}</p>
+                </div>
+                <div class="text-right">
+                    <div id="player-count" class="font-inter text-white text-[14px]">0/0 Players</div>
+                    <div id="ai-count" class="font-inter text-white/50 text-[12px]">0 AI Agents</div>
+                    <div id="status-badge" class="mt-2 inline-block px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-500 text-[10px] font-bold">WAITING</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Role List (Scrollable) -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-3 pb-24" id="role-list">
+            <!-- Roles will be injected here -->
+        </div>
+
+        <!-- Footer / Start Area -->
+        <div class="absolute bottom-0 left-0 w-full bg-black/90 backdrop-blur-md p-6 border-t border-white/10 z-20">
+            <div id="host-controls" class="hidden">
+                <button id="start-btn" onclick="startGame()" class="w-full bg-[#D97B48] text-white font-righteous py-3 rounded-xl shadow-lg hover:bg-[#c56a3d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    START GAME
+                </button>
+                <p class="text-center text-white/30 text-[10px] mt-2 font-inter">Only host can start when roles are ready</p>
+            </div>
+            <div id="client-wait" class="text-center text-white/50 font-inter text-[14px] animate-pulse">
+                Waiting for host to start...
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const socket = io();
+        const roomId = "{{ room_id }}";
+        const myPlayerId = "{{ player_id }}"; // Injected from server
+        let isHost = false;
+
+        const ROLE_SLOTS = [
+            { id: 'council_planner', name: 'Councilor', color: '#8b659c' },
+            { id: 'developer', name: 'Developer', color: '#c0293b' },
+            { id: 'potential_buyer', name: 'Future Buyer', color: '#2c3e50' },
+            { id: 'community_activist', name: 'Activist', color: '#9ff7c4' },
+            { id: 'resident_homeowner', name: 'Resident (A)', color: '#f6f999' },
+            { id: 'resident_homeowner', name: 'Resident (B)', color: '#f6f999' },
+            { id: 'urban_designer', name: 'Architect', color: '#fcaa78' }
+        ];
+
+        // Connect & Join
+        socket.on('connect', () => {
+            console.log("Connected to socket");
+            socket.emit('join_room_socket', { roomId: roomId });
+            // Initial fetch
+            fetchState();
+        });
+
+        socket.on('room_update', (roomState) => {
+            renderLobby(roomState);
+        });
+
+        socket.on('game_start', (data) => {
+            window.location.href = data.url;
+        });
+
+        async function fetchState() {
+            const res = await fetch(`/api/rooms/${roomId}/state`);
+            const state = await res.json();
+            renderLobby(state);
+        }
+
+        function renderLobby(state) {
+            if (!state || !state.config) return;
+
+            // Update counts
+            document.getElementById('player-count').innerText = `${state.players.length}/${state.config.maxHumans} Players`;
+            document.getElementById('ai-count').innerText = `${state.config.aiCount} AI Agents`;
+            
+            // Check Host Status
+            // We compare the room's hostId with our session's player_id
+            if (state.hostId && state.hostId === myPlayerId) {
+                document.getElementById('host-controls').classList.remove('hidden');
+                document.getElementById('client-wait').classList.add('hidden');
+                
+                // Enable start button if roles are filled or just let them start for now
+                document.getElementById('start-btn').disabled = false;
+            } else {
+                document.getElementById('host-controls').classList.add('hidden');
+                document.getElementById('client-wait').classList.remove('hidden');
+            }
+
+            // Render Roles
+            const list = document.getElementById('role-list');
+            list.innerHTML = '';
+
+            // Clone players list so we can consume them as we match slots
+            let availablePlayers = [...state.players];
+
+            ROLE_SLOTS.forEach(role => {
+                // Find a player that matches this role ID
+                const takerIndex = availablePlayers.findIndex(p => p.role === role.id);
+                let taker = null;
+                
+                if (takerIndex !== -1) {
+                    taker = availablePlayers[takerIndex];
+                    // Remove this player so they aren't matched to the next duplicate slot
+                    availablePlayers.splice(takerIndex, 1);
+                }
+
+                const takenBySomeone = !!taker;
+                const isTakenByMe = takenBySomeone && taker.id === myPlayerId;
+                
+                let statusHtml = '';
+                let cardClass = 'opacity-100 hover:scale-102 cursor-pointer';
+                let onClick = `selectRole('${role.id}')`;
+
+                if (takenBySomeone) {
+                    cardClass = 'opacity-50 border-white/10 cursor-default';
+                    onClick = '';
+                    if (isTakenByMe) {
+                         statusHtml = `<div class="absolute right-4 top-1/2 -translate-y-1/2 bg-[#D97B48] px-3 py-1 rounded-full text-[10px] text-white font-inter font-bold">YOU</div>`;
+                         cardClass = 'opacity-100 border-[#D97B48]/50 bg-[#D97B48]/10 cursor-default';
+                    } else {
+                        statusHtml = `<div class="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 px-3 py-1 rounded-full text-[10px] text-white font-inter">Taken by ${taker.name}</div>`;
+                    }
+                }
+
+                const item = document.createElement('div');
+                item.className = `relative w-full h-[70px] bg-white/5 border border-white/10 rounded-xl flex items-center px-4 transition-all ${cardClass}`;
+                if(onClick) item.setAttribute('onclick', onClick);
+
+                item.innerHTML = `
+                    <div class="w-2 h-full absolute left-0 top-0 bg-[${role.color}] opacity-50"></div>
+                    <div class="ml-4">
+                        <p class="font-pridi font-bold text-[#F2E6C2] text-[18px]">${role.name}</p>
+                    </div>
+                    ${statusHtml}
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function selectRole(roleId) {
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/select_role`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: roleId })
+                });
+                const data = await res.json();
+                if (data.error) {
+                    alert(data.error);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function startGame() {
+            await fetch(`/api/rooms/${roomId}/start`, { method: 'POST' });
+        }
+
+        function copyRoomId() {
+            navigator.clipboard.writeText(roomId);
+            alert("Room ID copied!");
+        }
+    </script>
+</body>
+</html>

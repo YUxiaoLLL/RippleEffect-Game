@@ -1,5 +1,6 @@
 # Security
 .env
+*.db
 
 # Python / Flask
 __pycache__/
@@ -16,3 +17,10 @@ venv/
 .vscode/
 node_modules/
 legacy_method/
+*.log
+repomix-output.xml
+response.json
+cookies.txt
+verify_turn.sh
+test_multiplayer_flow.py
+server.pid

@@ -19,6 +19,16 @@
             }
         }
     </script>
+    <script>
+        function _updateVisualViewportVars() {
+            const vv = window.visualViewport;
+            const occlusion = vv ? Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)) : 0;
+            document.documentElement.style.setProperty('--vv-bottom-occlusion', occlusion + 'px');
+        }
+        window.addEventListener('load', _updateVisualViewportVars);
+        window.addEventListener('resize', _updateVisualViewportVars);
+        window.addEventListener('orientationchange', _updateVisualViewportVars);
+    </script>
     <style>
         body { background-color: #202020; }
         .chat-bubble { animation: slideIn 0.3s ease-out; }
@@ -26,6 +36,136 @@
         /* Hide scrollbar for clean look */
         #chatArea::-webkit-scrollbar { width: 4px; }
         #chatArea::-webkit-scrollbar-thumb { background-color: #d9d9d9; border-radius: 4px; }
+
+        @supports (height: 100dvh) {
+            #app {
+                height: 100dvh;
+            }
+        }
+
+        #action-area {
+            padding-bottom: calc(30px + env(safe-area-inset-bottom) + var(--vv-bottom-occlusion, 0px)) !important;
+        }
+
+        .round-controller {
+            display: none;
+            margin-top: 6px;
+            padding: 8px 10px;
+            border-radius: 14px;
+            background: rgba(255, 253, 246, 0.9);
+            border: 1px solid rgba(214, 200, 205, 0.9);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+        .round-controller.active {
+            display: block;
+        }
+        .turn-pills {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .turn-pill {
+            flex: 0 0 auto;
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(214, 200, 205, 0.9);
+            background: rgba(255,255,255,0.9);
+            color: #555;
+            max-width: 120px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .turn-pill.active {
+            background: #E5C2A5;
+            border-color: #E5C2A5;
+            color: #333;
+            font-weight: 600;
+        }
+        .turn-pill.me {
+            border-color: #e34b2a;
+        }
+        .host-controls {
+            display: none;
+            margin-top: 8px;
+            gap: 8px;
+        }
+        .host-controls.active {
+            display: flex;
+        }
+        .host-btn {
+            flex: 1;
+            font-size: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(214, 200, 205, 0.9);
+            background: #fff;
+            color: #333;
+            font-weight: 600;
+        }
+        .host-btn.primary {
+            background: #D97B48;
+            border-color: #D97B48;
+            color: white;
+        }
+
+        .zone-focus {
+            width: calc(100% - 72px);
+            margin: 6px auto 0 auto;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(255, 253, 246, 0.9);
+            border: 1px solid rgba(214, 200, 205, 0.9);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+
+        .zone-focus.hidden {
+            display: none;
+        }
+
+        .zone-focus-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .zone-focus-kicker {
+            font-family: Inter, sans-serif;
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(159, 148, 137, 1);
+        }
+
+        .zone-focus-zone {
+            font-family: Rethink Sans, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .zone-focus-issue {
+            font-family: Inter, sans-serif;
+            font-size: 10px;
+            color: rgba(85, 85, 85, 1);
+        }
+
+        .zone-focus-facts {
+            margin-top: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .zone-focus-fact {
+            font-family: Inter, sans-serif;
+            font-size: 11px;
+            color: #333;
+            line-height: 1.3;
+        }
 
         /* Help System Styles */
         .help-icon {
@@ -138,44 +278,172 @@
             color: #E5C2A5;
             font-size: 13px;
         }
+
+        /* Constraint Layer Styles */
+        .meter-container {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 4px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .meter-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease, background-color 0.5s ease;
+        }
+        .meter-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        /* System Cards */
+        .system-card {
+            background: #fff0f0;
+            border-left: 3px solid #ff4d4d;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #333;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            animation: slideIn 0.3s ease-out;
+        }
+        .system-card.event {
+            background: #f0f8ff;
+            border-left: 3px solid #007bff;
+        }
+        .system-card.notice {
+            background: #fffbe6;
+            border-left: 3px solid #ffc107;
+        }
+
+        .mitigation-select {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #d6c8cd;
+            background: rgba(255,255,255,0.8);
+            color: #555;
+            margin-bottom: 8px;
+            width: 100%;
+        }
+
+        /* --- Onboarding Styles --- */
+        .onboarding-overlay {
+            position: fixed;
+            inset: 0;
+            /* background: rgba(0, 0, 0, 0.75); Remove old dimming */
+            backdrop-filter: blur(2px); /* User request */
+            z-index: 4000;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none; /* Let clicks pass through to highlighted element if needed, or just block? */
+        }
+        .onboarding-overlay.active {
+            opacity: 1;
+        }
+        
+        /* The card that holds text */
+        .onboarding-card {
+            background: white;
+            padding: 24px;
+            border-radius: 20px;
+            width: 85%;
+            max-width: 340px;
+            max-height: calc(100% - 32px - env(safe-area-inset-bottom));
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+            position: absolute; 
+            transition: all 0.4s ease;
+            z-index: 4002; /* Above spotlight */
+            display: none; /* Hidden by default */
+        }
+        .onboarding-card.active {
+            display: block;
+        }
+
+        .onboarding-card h2 {
+            font-family: 'Rethink Sans', sans-serif;
+            font-weight: 600;
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 12px;
+            line-height: 1.3;
+        }
+        
+        .onboarding-card p {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+        
+        .onboarding-btn {
+            background: #E5C2A5;
+            color: #333;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+            pointer-events: auto;
+        }
+        .onboarding-btn:hover { background: #dcbba0; }
+
+        /* Spotlight class to bring elements above overlay */
+        .spotlight-active {
+            position: relative;
+            z-index: 4001 !important;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75); /* The spotlight darkness */
+            border-radius: 12px;
+            background: white; /* Ensure bg is visible */
+            transition: box-shadow 0.3s ease;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center">
 
-<div id="app" class="relative w-[430px] h-[932px] bg-white shadow-2xl overflow-hidden flex flex-col font-inter">
+<div id="app" class="relative w-screen h-screen max-w-[430px] max-h-[932px] bg-white shadow-2xl overflow-hidden flex flex-col font-inter">
     
+    <!-- Onboarding Overlay (Backdrop only) -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden"></div>
+    
+    <!-- Onboarding Card (Floating above) -->
+    <div id="onboarding-card" class="onboarding-card">
+        <h2 id="ob-title">Title</h2>
+        <p id="ob-text">Text</p>
+        <button id="ob-btn" class="onboarding-btn">Next</button>
+    </div>
+
     <!-- Action Tooltip Element -->
     <div id="action-tooltip" class="action-tooltip"></div>
-
-    <!-- Help Overlay -->
+    
+    <!-- Help Overlay (Dynamic) -->
     <div id="help-overlay" class="help-overlay hidden">
-      <div class="help-content">
-        <h2>Scene Visualization</h2>
-        <p>The <strong>3D map</strong> shows Canada Water's redevelopment site.</p>
-        <p>Your dialogue choices influence:</p>
-        <ul style="text-align: left; padding-left: 20px; margin-bottom: 12px; font-size: 13px; color: #555;">
-            <li>Building height</li>
-            <li>Land use type</li>
-            <li>Density</li>
-            <li>Affordable housing distribution</li>
-        </ul>
-        <p>Changes only appear when a consensus forms or an action pushes an issue threshold.</p>
-        
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-            <p style="margin-bottom: 8px;"><strong>Gentle Persuasion (1T):</strong> Low risk, small shift.</p>
-            <p style="margin-bottom: 8px;"><strong>Strong Persuasion (3T):</strong> Risky, high impact.</p>
-            <p style="margin-bottom: 8px;"><strong>Recruit Ally (4T):</strong> Adds their weight to yours.</p>
-            <p style="margin-bottom: 0;"><strong>Pressure (2T):</strong> Forces stance, reduces trust.</p>
+      <div class="help-content relative">
+        <button id="help-close-x" class="absolute top-2 right-3 text-gray-400 hover:text-gray-600">✕</button>
+        <h2 id="help-title">Title</h2>
+        <div id="help-body" class="text-left text-[13px] text-[#555] leading-relaxed">
+            <!-- Content -->
         </div>
-        
-        <button id="help-close" class="close-btn">Got it</button>
+        <button id="help-close" class="close-btn mt-4">Got it</button>
       </div>
     </div>
 
     <!-- 1. Scene Visualization Section -->
-    <div class="relative px-[29px] pt-[46px] mb-2 shrink-0 bg-white">
+    <div id="scene-wrapper" class="relative px-[29px] pt-[46px] mb-2 shrink-0 bg-white pb-4 shadow-sm z-10">
         <!-- Back Arrow -->
-        <a href="{{ url_for('home_gaming') }}" class="absolute top-[25px] left-[17px] w-[31px] h-[31px] cursor-pointer z-20 hover:opacity-80 transition-opacity">
+        <a href="{{ url_for('home_gaming') }}" class="absolute top-[12px] left-[17px] w-[31px] h-[31px] cursor-pointer z-20 hover:opacity-80 transition-opacity">
              <div class="absolute inset-0 bg-[#d9d9d9] rounded-[10px]"></div>
              <div class="absolute inset-0 flex items-center justify-center">
                 <svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -189,54 +457,158 @@
             <div class="font-rethink font-semibold text-[16px] text-[#9f9489] tracking-[1.28px]">
                 Scene Visualization
             </div>
+            
+            <!-- Expand Button -->
+            <button id="expandBtn" class="w-[24px] h-[24px] flex items-center justify-center border border-[#d6c8cd] rounded-[6px] text-[#959393] bg-white hover:bg-[#f5f5f5] transition-colors cursor-pointer shadow-sm" title="Expand Scene">
+                <span style="font-size: 14px; line-height: 1;">⤢</span>
+            </button>
+
             <!-- Help Icon -->
-            <div id="help-btn" class="help-icon">?</div>
+            <div class="help-icon" onclick="showHelp('scene')">?</div>
         </div>
 
-        <!-- 3D Container -->
-        <div class="relative w-[371px] h-[326px] bg-[#d9d9d9] rounded-[20px] mt-[20px] overflow-hidden shadow-inner">
-             <iframe src="/3d/" class="w-full h-full border-0 pointer-events-auto"></iframe>
-             <!-- Buildings Updated Overlay -->
-             <div class="absolute bottom-[10px] left-0 w-full text-center font-thin text-[12px] tracking-[0.96px] text-black opacity-50 pointer-events-none">
-                 🏗️ Buildings Updated: A1
-             </div>
+        <!-- 3D Container (Added ID) -->
+        <div id="scene-section" class="relative w-full h-[200px] bg-[#d9d9d9] rounded-[20px] mt-[20px] overflow-hidden shadow-inner mb-4 transition-all duration-300">
+             <iframe src="/3d/?v={{ range(1, 10000) | random }}" class="w-full h-full border-0 pointer-events-auto"></iframe>
+        </div>
+
+        <!-- Constraint Meters (Added ID) -->
+        <div id="constraints-section" class="w-full px-1 transition-all duration-300">
+            <h4 class="font-rethink text-[12px] text-[#9f9489] uppercase tracking-wider mb-2">System Constraints</h4>
+            
+            <!-- Climate -->
+            <div class="mb-2">
+                <div class="meter-label">
+                    <div class="flex items-center gap-1">
+                        <span>Climate Pressure</span>
+                        <div class="help-icon" style="width:14px; height:14px; font-size:10px; border-width:1px;" onclick="showHelp('climate')">?</div>
+                    </div>
+                    <span id="climate-val">35%</span>
+                </div>
+                <div class="meter-container">
+                    <div id="climate-bar" class="meter-fill" style="width: 35%; background-color: #4CAF50;"></div>
+                </div>
+            </div>
+
+            <!-- Economy -->
+            <div class="mb-2">
+                <div class="meter-label">
+                    <div class="flex items-center gap-1">
+                        <span>Economic Pressure</span>
+                        <div class="help-icon" style="width:14px; height:14px; font-size:10px; border-width:1px;" onclick="showHelp('economy')">?</div>
+                    </div>
+                    <span id="economy-val">40%</span>
+                </div>
+                <div class="meter-container">
+                    <div id="economy-bar" class="meter-fill" style="width: 40%; background-color: #4CAF50;"></div>
+                </div>
+            </div>
+
+            <!-- Ecology -->
+            <div>
+                <div class="meter-label">
+                    <div class="flex items-center gap-1">
+                        <span>Ecological Pressure</span>
+                        <div class="help-icon" style="width:14px; height:14px; font-size:10px; border-width:1px;" onclick="showHelp('ecology')">?</div>
+                    </div>
+                    <span id="ecology-val">30%</span>
+                </div>
+                <div class="meter-container">
+                    <div id="ecology-bar" class="meter-fill" style="width: 30%; background-color: #4CAF50;"></div>
+                </div>
+            </div>
+
+            <div id="round-controller" class="round-controller w-full mx-auto px-[36px]">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="font-rethink text-[12px] text-[#9f9489] uppercase tracking-wider">
+                        Multiplayer Round Control
+                    </div>
+                    <div id="turn-status" class="font-inter text-[11px] text-[#555]"></div>
+                </div>
+                <div id="turn-pills" class="turn-pills"></div>
+                <div id="host-controls" class="host-controls">
+                    <button id="host-next" class="host-btn">Next Speaker</button>
+                    <button id="host-end-round" class="host-btn primary">End Round</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Cards Container -->
+        <div id="system-cards-container" class="mt-3 px-1">
+            <!-- Notices injected here -->
         </div>
     </div>
 
-    <!-- Main Chat Wrapper with Cream Background -->
-    <div class="flex-1 flex flex-col bg-[#FFFDF6] rounded-t-[30px] relative overflow-hidden pt-5">
+    <!-- 2. Draggable Messages Panel (Overlay) -->
+    <!-- This replaces the previous 'chat-wrapper' which was flex-1 -->
+    <div id="draggable-messages-panel" 
+         class="absolute left-0 w-full rounded-t-[30px] overflow-hidden flex flex-col z-30 transition-transform duration-75 ease-out"
+         style="top: 400px; height: calc(100% - 100px);">
         
-        <!-- 2. Messages Header Section -->
-        <div class="relative px-[32px] flex justify-between items-center mb-[10px] shrink-0">
-            <div class="font-rethink font-normal text-[20px] text-[#9f9489]/50 tracking-[1px]">
-                Messages
-            </div>
-            <button id="expandBtn" class="font-rethink text-[12px] text-[#959393] tracking-[0.96px] border border-[#d6c8cd] rounded-[5px] px-2 py-1 shadow-sm bg-[#fdf2f6]/30 hover:bg-white transition-colors">
-                Expand Scene ⤢
-            </button>
+        <!-- Isolated Background Layer with Blur & Mask (Does not affect text) -->
+        <div id="panel-background" 
+             class="absolute inset-0 bg-[#FFFDF6]/90 backdrop-blur-md shadow-[0_-5px_20px_rgba(0,0,0,0.1)] rounded-t-[30px]"
+             style="-webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); mask-image: linear-gradient(to bottom, transparent 0%, black 30px, black 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30px, black 100%);">
         </div>
 
-        <!-- 3. Round & Tokens Info -->
-        <div class="relative px-[36px] flex justify-between items-center mb-[10px] shrink-0">
-            <div class="font-rethink font-medium text-[18px] text-[#9f9489] tracking-[0.54px]">
-                Round {{ state.round | default(1) }}/8
+        <!-- Drag Handle / Header Area -->
+        <div id="drag-handle" class="relative z-10 w-full pt-6 pb-1 cursor-grab active:cursor-grabbing flex flex-col items-center shrink-0" style="touch-action: none;">
+             <!-- Handle Bar -->
+             <div class="w-12 h-1.5 bg-gray-300 rounded-full mb-2"></div>
+             
+             <!-- Messages Header -->
+             <div class="w-full px-[32px] flex justify-between items-center mb-[5px]">
+                <div class="font-rethink font-normal text-[20px] text-[#9f9489]/50 tracking-[1px]">
+                    Messages
+                </div>
             </div>
-            <div class="flex items-center gap-2">
-                <span class="font-inter text-[10px] text-[#e34b2a] tracking-[0.8px]">Influence Tokens</span>
-                <span class="font-righteous text-[12px] text-black tracking-[0.96px]">{{ player_profile.influence_tokens }}T</span>
+            
+            <!-- Round & Tokens Info -->
+            <div id="tokens-wrapper" class="w-full relative px-[36px] flex justify-between items-center mb-[5px]">
+                <div class="font-rethink font-medium text-[18px] text-[#9f9489] tracking-[0.54px]">
+                    Round <span id="round-display">{{ state.round | default(1) }}</span>/8
+                </div>
+                <div id="tokens-section" class="flex items-center gap-2">
+                    <span class="font-inter text-[10px] text-[#e34b2a] tracking-[0.8px]">Influence Tokens</span>
+                    <div class="help-icon" style="width:14px; height:14px; font-size:10px; border-width:1px; color:#e34b2a; border-color:#e34b2a;" onclick="showHelp('tokens')">?</div>
+                    <span class="font-righteous text-[12px] text-black tracking-[0.96px]"><span id="token-display">{{ player_profile.influence_tokens }}</span>T</span>
+                </div>
+            </div>
+
+            <div id="zone-focus" class="zone-focus hidden">
+                <div class="zone-focus-title">
+                    <div class="zone-focus-kicker">Zone Focus</div>
+                    <div id="zone-focus-zone" class="zone-focus-zone"></div>
+                </div>
+                <div id="zone-focus-issue" class="zone-focus-issue"></div>
+                <div id="zone-focus-facts" class="zone-focus-facts"></div>
             </div>
         </div>
 
-        <!-- 4. Chat Area -->
-        <div class="relative flex-1 w-full px-[21px] overflow-y-auto pb-32 z-10" id="chatArea">
+        <!-- Chat Area (Scrollable) -->
+        <div class="relative z-10 flex-1 w-full px-[21px] overflow-y-auto pb-32" id="chatArea" style="overscroll-behavior: contain; touch-action: pan-y;">
             <!-- Dynamic Messages Container -->
             <div id="messagesContainer" class="flex flex-col gap-4 pt-2">
                 <!-- Messages will be injected here -->
             </div>
         </div>
+    </div>
 
-        <!-- 5. Bottom Action Area -->
-        <div class="absolute bottom-0 left-0 w-full h-auto pb-[30px] pt-4 bg-gradient-to-t from-[#FFFDF6] via-[#FFFDF6] to-transparent z-20">
+    <!-- 3. Fixed Footer Action Area (Pinned to Bottom) -->
+    <div id="action-area" class="absolute bottom-0 left-0 w-full h-auto pb-[30px] pt-4 bg-[#FFFDF6] z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <!-- Mitigation Selection -->
+        <div id="mitigation-section" class="px-[29px] mb-2">
+                <div class="flex items-center gap-1 mb-1">
+                     <span class="text-[10px] text-[#9f9489] uppercase tracking-wider font-rethink">Mitigation</span>
+                     <div class="help-icon" style="width:14px; height:14px; font-size:10px; border-width:1px;" onclick="showHelp('mitigation')">?</div>
+                </div>
+                <select id="mitigationSelect" class="mitigation-select">
+                    <option value="none">Mitigation: None (0 CP)</option>
+                    <option value="basic">Mitigation: Basic (2 CP)</option>
+                    <option value="strong">Mitigation: Strong (4 CP)</option>
+                </select>
+            </div>
+
             <!-- Action Buttons -->
             <div class="flex justify-center gap-3 mb-4 px-4 flex-wrap" id="quickActions">
                 <button class="action-btn flex flex-col items-center justify-center w-[82px] h-[40px] bg-[#e5cdcd] rounded-[10px] shadow-[2px_1px_5.8px_0px_rgba(0,0,0,0.25)] hover:brightness-105 transition-all active:scale-95" data-action="gentle" data-cost="1">
@@ -268,13 +640,12 @@
             </div>
         </div>
     </div>
-
     <!-- Fullscreen 3D Overlay -->
     <div id="fullscreen3D" class="hidden fixed inset-0 z-50 bg-black">
         <button id="close3D" class="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 backdrop-blur rounded-lg text-white z-10">
             ✕
         </button>
-        <iframe id="fullscreenFrame" src="/3d/?mode=full" class="w-full h-full border-0"></iframe>
+        <iframe id="fullscreenFrame" src="/3d/?mode=full&v={{ range(1, 10000) | random }}" class="w-full h-full border-0"></iframe>
     </div>
 
     <!-- Attributes Modal -->
@@ -299,25 +670,381 @@
     </div>
 </div>
 
+<script id="initial-state-json" type="application/json">{{ {
+  'currentRound': (state.round | default(1)),
+  'stakeholders': characters,
+  'playerProfile': player_profile,
+  'climateScore': (climate_score | default(50)),
+  'history': (state.history | default([])),
+  'constraintState': (state.constraint_state | default({})),
+  'constraintLast': (state.constraint_last | default({})),
+  'roomId': room_id,
+  'isMultiplayer': (true if room_id else false),
+  'isHost': (is_host | default(false)),
+  'turnOrder': (turn_order | default([])),
+  'currentSpeaker': current_speaker,
+  'turnIndex': (turn_index | default(0)),
+  'myPlayerId': (player_profile.id if player_profile else None),
+  'activeZoneId': (state.active_zone_id | default('GLOBAL')),
+  'activeIssueTag': (state.active_issue_tag | default('system')),
+  'activeZoneFacts': (active_zone_facts | default(None))
+} | tojson | safe }}</script>
+
 <script>
 // Application State
+const __INITIAL = (() => {
+    try {
+        const el = document.getElementById('initial-state-json');
+        const raw = el ? el.textContent : '';
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+        return {};
+    }
+})();
+
 let state = {
-    currentRound: {{ state.round | default(1) }},
+    currentRound: __INITIAL.currentRound || 1,
     messages: [],
-    stakeholders: {{ characters | tojson | safe }},
-    playerProfile: {{ player_profile | tojson | safe }},
-    climateScore: {{ climate_score | default(50) }},
-    history: {{ state.history | tojson | safe }} || []
+    stakeholders: __INITIAL.stakeholders || [],
+    playerProfile: __INITIAL.playerProfile || {},
+    climateScore: __INITIAL.climateScore || 50,
+    history: __INITIAL.history || [],
+    constraintState: __INITIAL.constraintState || {},
+    constraintLast: __INITIAL.constraintLast || {},
+    roomId: __INITIAL.roomId || null,
+    isMultiplayer: !!__INITIAL.isMultiplayer,
+    isHost: !!__INITIAL.isHost,
+    turnOrder: __INITIAL.turnOrder || [],
+    currentSpeaker: __INITIAL.currentSpeaker || null,
+    turnIndex: __INITIAL.turnIndex || 0,
+    myPlayerId: __INITIAL.myPlayerId || null,
+    activeZoneId: __INITIAL.activeZoneId || null,
+    activeIssueTag: __INITIAL.activeIssueTag || null,
+    activeZoneFacts: __INITIAL.activeZoneFacts || null,
 };
+
+function renderZoneFocus() {
+    const wrap = document.getElementById('zone-focus');
+    if (!wrap) return;
+
+    const zid = (state.activeZoneId || '').toString().trim();
+    const facts = state.activeZoneFacts || {};
+    const label = (facts.label || '').toString().trim();
+    const issue = (state.activeIssueTag || '').toString().trim();
+
+    if (!zid && !label && !issue) {
+        wrap.classList.add('hidden');
+        return;
+    }
+
+    wrap.classList.remove('hidden');
+
+    const zoneEl = document.getElementById('zone-focus-zone');
+    const issueEl = document.getElementById('zone-focus-issue');
+    const factsEl = document.getElementById('zone-focus-facts');
+
+    if (zoneEl) zoneEl.textContent = (label ? `${zid} · ${label}` : zid);
+    if (issueEl) issueEl.textContent = issue ? `Issue: ${issue}` : '';
+
+    if (factsEl) {
+        const hf = facts.hard_facts || {};
+        const entries = Object.entries(hf);
+        const top = entries.slice(0, 3);
+        factsEl.innerHTML = top.map(([k, v]) => {
+            const safeKey = String(k).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const safeVal = String(v).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<div class="zone-focus-fact"><strong>${safeKey}:</strong> ${safeVal}</div>`;
+        }).join('');
+    }
+}
+
+function renderRoundController() {
+    const controller = document.getElementById('round-controller');
+    if (!controller) return;
+    if (!state.isMultiplayer) {
+        controller.classList.remove('active');
+        return;
+    }
+
+    controller.classList.add('active');
+
+    const pills = document.getElementById('turn-pills');
+    const status = document.getElementById('turn-status');
+    const hostControls = document.getElementById('host-controls');
+    const hostNext = document.getElementById('host-next');
+    const hostEndRound = document.getElementById('host-end-round');
+
+    const order = Array.isArray(state.turnOrder) ? state.turnOrder : [];
+    const speaker = state.stakeholders.find(s => s.id === state.currentSpeaker);
+    const speakerName = speaker ? speaker.name : (state.currentSpeaker || 'Unknown');
+
+    if (status) {
+        status.textContent = `Round ${state.currentRound}/8 • ${speakerName}'s turn`;
+    }
+
+    if (pills) {
+        pills.innerHTML = '';
+        order.forEach((id) => {
+            const el = document.createElement('div');
+            const who = state.stakeholders.find(s => s.id === id);
+            const label = who ? who.name : id;
+            el.className = 'turn-pill' + (id === state.currentSpeaker ? ' active' : '') + (id === state.myPlayerId ? ' me' : '');
+            el.title = label;
+            el.textContent = label;
+            pills.appendChild(el);
+        });
+    }
+
+    if (hostControls) {
+        hostControls.classList.toggle('active', !!state.isHost);
+    }
+
+    if (state.isHost && hostNext && !hostNext.dataset.bound) {
+        hostNext.dataset.bound = '1';
+        hostNext.addEventListener('click', async () => {
+            const res = await fetch(`/api/rooms/${state.roomId}/advance_turn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playerId: state.myPlayerId })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                alert(data.error || 'Failed to advance turn');
+                return;
+            }
+            state.turnIndex = data.turnIndex;
+            state.currentSpeaker = data.currentSpeaker;
+            state.currentRound = data.roundIndex || state.currentRound;
+            renderTurnState();
+            renderRoundController();
+        });
+    }
+
+    if (state.isHost && hostEndRound && !hostEndRound.dataset.bound) {
+        hostEndRound.dataset.bound = '1';
+        hostEndRound.addEventListener('click', async () => {
+            const res = await fetch(`/api/rooms/${state.roomId}/end_round`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playerId: state.myPlayerId })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                alert(data.error || 'Failed to end round');
+                return;
+            }
+            state.turnIndex = data.turnIndex;
+            state.currentSpeaker = data.currentSpeaker;
+            state.currentRound = data.roundIndex || state.currentRound;
+            renderTurnState();
+            renderRoundController();
+        });
+    }
+}
+
+// --- Polling for Multiplayer ---
+let pollInterval = null;
+
+let _lastPolledMessagesSig = '';
+
+function _inferZoneFromText(text, fallback) {
+    try {
+        const t = String(text || '');
+        const m = t.match(/\b(A1|A2|K1)\b/i);
+        if (m && m[1]) return String(m[1]).toUpperCase();
+    } catch (e) {}
+    return fallback || null;
+}
+
+function _issueTagForZone(zid) {
+    const z = String(zid || '').toUpperCase();
+    if (z === 'K1') return 'affordability';
+    if (z === 'A1' || z === 'A2') return 'workspace';
+    return 'system';
+}
+
+function startPolling() {
+    const pollFn = async () => {
+        try {
+            const res = await fetch('/api/negotiation/state');
+            if (res.ok) {
+                const data = await res.json();
+
+                state.currentRound = data.currentRound;
+                const nextMessages = data.messages || [];
+                const nextSig = _computeMessagesSignature(nextMessages);
+                const messagesChanged = nextSig !== _lastPolledMessagesSig;
+                _lastPolledMessagesSig = nextSig;
+                if (messagesChanged) state.messages = nextMessages;
+                state.playerProfile = data.playerProfile;
+                state.constraintState = data.constraintState;
+                state.constraintLast = data.constraintLast;
+                state.climateScore = data.climateScore;
+
+                state.activeZoneId = data.activeZoneId;
+                state.activeIssueTag = data.activeIssueTag;
+                state.activeZoneFacts = data.activeZoneFacts;
+
+                if (data.isMultiplayer) {
+                    state.isMultiplayer = true;
+                    state.isHost = !!data.isHost;
+                    if (Array.isArray(data.turnOrder)) state.turnOrder = data.turnOrder;
+                    state.currentSpeaker = data.currentSpeaker;
+                    state.turnIndex = data.turnIndex;
+                    state.myPlayerId = data.myPlayerId;
+                    state.stakeholders = data.stakeholders;
+                } else {
+                    state.stakeholders = data.stakeholders;
+                }
+
+                if (messagesChanged) renderMessages();
+                renderConstraints();
+                renderSystemCards();
+                renderTurnState();
+                renderRoundController();
+                renderZoneFocus();
+            }
+        } catch (e) {
+            console.error("Polling error:", e);
+        }
+    };
+
+    pollFn();
+    pollInterval = setInterval(pollFn, 2000);
+}
+
+function renderTurnState() {
+    if (!state.isMultiplayer) return;
+
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const quickActions = document.getElementById('quickActions');
+    
+    // Find who is speaking
+    const isMyTurn = state.currentSpeaker === state.myPlayerId;
+    const speaker = state.stakeholders.find(s => s.id === state.currentSpeaker);
+    const speakerName = speaker ? speaker.name : 'Unknown';
+    
+    // Update Input State
+    if (isMyTurn) {
+        if (input.disabled) {
+            input.disabled = false;
+            input.placeholder = "It's your turn. Type a message...";
+            input.parentElement.classList.remove('opacity-50', 'cursor-not-allowed');
+            if (quickActions) quickActions.classList.remove('pointer-events-none', 'opacity-50');
+        }
+    } else {
+        if (!input.disabled) {
+            input.disabled = true;
+            input.placeholder = `Waiting for ${speakerName}...`;
+            input.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
+            if (quickActions) quickActions.classList.add('pointer-events-none', 'opacity-50');
+        } else {
+             // Update placeholder even if already disabled (in case speaker changed)
+             input.placeholder = `Waiting for ${speakerName}...`;
+        }
+    }
+}
+
+// --- Constraint Rendering ---
+function renderConstraints() {
+    if (!state.constraintState) return;
+
+    const updateMeter = (id, value) => {
+        const bar = document.getElementById(id + '-bar');
+        const valText = document.getElementById(id + '-val');
+        
+        if (bar && valText) {
+            bar.style.width = Math.min(100, Math.max(0, value)) + '%';
+            valText.textContent = Math.round(value) + '%';
+            
+            // Color Logic (Higher is worse)
+            if (value < 40) {
+                bar.style.backgroundColor = '#4CAF50'; // Green
+            } else if (value < 70) {
+                bar.style.backgroundColor = '#FFC107'; // Warning/Orange
+            } else {
+                bar.style.backgroundColor = '#F44336'; // Critical/Red
+            }
+        }
+    };
+
+    updateMeter('climate', state.constraintState.climate_pressure || 0);
+    updateMeter('economy', state.constraintState.economic_pressure || 0);
+    updateMeter('ecology', state.constraintState.ecology_pressure || 0);
+}
+
+function renderSystemCards() {
+    const container = document.getElementById('system-cards-container');
+    container.innerHTML = ''; // Clear previous
+
+    if (!state.constraintLast) return;
+
+    // Notices
+    const notices = state.constraintLast.notices || [];
+    notices.forEach(notice => {
+        const el = document.createElement('div');
+        el.className = 'system-card notice';
+        el.innerHTML = `<strong>System Notice:</strong> ${notice}`;
+        container.appendChild(el);
+    });
+
+    // Triggered Events
+    const events = state.constraintLast.triggered_events || [];
+    events.forEach(evt => {
+        const el = document.createElement('div');
+        el.className = 'system-card event';
+        el.innerHTML = `<strong>Event Triggered:</strong> ${evt}`;
+        container.appendChild(el);
+    });
+    
+    // Check for locks
+    const locks = state.constraintLast.locks || [];
+    if (locks.length > 0) {
+        // You could disable buttons here, or just show a warning
+        const el = document.createElement('div');
+        el.className = 'system-card';
+        el.style.borderLeftColor = '#333';
+        el.style.backgroundColor = '#ddd';
+        el.innerHTML = `<strong>System Lock:</strong> Actions vetoed: ${locks.join(', ')}`;
+        container.appendChild(el);
+    }
+}
 
 // Render Logic
 function renderMessages() {
     const container = document.getElementById('messagesContainer');
-    container.innerHTML = state.messages.map(msg => createMessageBubble(msg)).join('');
-    
-    // Auto scroll
     const chatArea = document.getElementById('chatArea');
-    chatArea.scrollTop = chatArea.scrollHeight;
+    const wasNearBottom = (() => {
+        try {
+            const distance = chatArea.scrollHeight - (chatArea.scrollTop + chatArea.clientHeight);
+            return distance < 120;
+        } catch (e) {
+            return true;
+        }
+    })();
+
+    container.innerHTML = state.messages.map(msg => createMessageBubble(msg)).join('');
+
+    // Auto scroll only if user is already near bottom
+    if (wasNearBottom) {
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+    
+    // Update Round & Tokens Display
+    const roundDisp = document.getElementById('round-display');
+    if (roundDisp) roundDisp.textContent = state.currentRound;
+    
+    const tokenDisp = document.getElementById('token-display');
+    if (tokenDisp && state.playerProfile) tokenDisp.textContent = state.playerProfile.influence_tokens;
+}
+
+function _computeMessagesSignature(messages) {
+    try {
+        return (messages || []).map(m => `${m.id || ''}|${m.sender || ''}|${m.stakeholderId || ''}|${m.content || ''}`).join('\n');
+    } catch (e) {
+        return String(Date.now());
+    }
 }
 
 function createMessageBubble(message) {
@@ -383,6 +1110,13 @@ function getAvatarImage(roleId) {
 
 // Initialize
 window.addEventListener('load', () => {
+    _updateVisualViewportVars();
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', _updateVisualViewportVars);
+        window.visualViewport.addEventListener('scroll', _updateVisualViewportVars);
+    }
+    window.addEventListener('resize', _updateVisualViewportVars);
+
     // Load history
     if (state.history && state.history.length > 0) {
         state.messages = state.history;
@@ -396,13 +1130,31 @@ window.addEventListener('load', () => {
         });
     }
     renderMessages();
+    renderConstraints();
+    renderSystemCards();
+    renderTurnState();
+    renderRoundController();
+    renderZoneFocus();
+    initOnboarding();
+    startPolling();
 });
 
 // Send Message
 async function sendMessage() {
     const input = document.getElementById('messageInput');
+    const mitigationSelect = document.getElementById('mitigationSelect');
+    
     const text = input.value.trim();
     if (!text) return;
+
+    const inferred = _inferZoneFromText(text, state.activeZoneId);
+    if (inferred) {
+        state.activeZoneId = inferred;
+        state.activeIssueTag = _issueTagForZone(inferred);
+        renderZoneFocus();
+    }
+    
+    const mitigation = mitigationSelect ? mitigationSelect.value : 'none';
 
     // Optimistic update
     state.messages.push({
@@ -417,41 +1169,73 @@ async function sendMessage() {
     // API Call
     showThinking();
     try {
-        const timeoutMs = 90000; // 90 seconds timeout for intelligent responses
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        let response;
+        
+        if (state.isMultiplayer) {
+            // Multiplayer Send
+            response = await fetch(`/api/rooms/${state.roomId}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    playerId: state.myPlayerId,
+                    text: text
+                })
+            });
+        } else {
+            // Single Player Send (Legacy)
+            const timeoutMs = 90000; // 90 seconds timeout for intelligent responses
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        const response = await fetch('/negotiation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
-            body: `action=submit_statement&player_statement=${encodeURIComponent(text)}`,
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+            response = await fetch('/negotiation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: `action=submit_statement&player_statement=${encodeURIComponent(text)}&mitigation=${encodeURIComponent(mitigation)}`,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+        }
         
         if (response.ok) {
             const data = await response.json();
-            if (data.status === 'success') {
-                state.messages = data.history; // Sync
-                state.currentRound = data.new_round;
-                renderMessages();
-            } else if (data.status === 'error') {
-                alert("Error: " + data.message);
+            
+            if (state.isMultiplayer) {
+                if (data.ok) {
+                    // Success - update state immediately for responsiveness
+                    if (data.currentSpeaker) state.currentSpeaker = data.currentSpeaker;
+                    if (data.turnIndex !== undefined) state.turnIndex = data.turnIndex;
+                    if (data.roundIndex) state.currentRound = data.roundIndex;
+                    renderTurnState();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            } else {
+                // Single Player Response
+                if (data.status === 'success') {
+                    state.messages = data.history; // Sync history
+                    state.currentRound = data.new_round;
+                    state.playerProfile.influence_tokens = data.player_tokens; // Sync tokens
+                    
+                    if (data.constraintState) state.constraintState = data.constraintState;
+                    if (data.constraintLast) state.constraintLast = data.constraintLast;
+                    
+                    renderMessages();
+                    renderConstraints();
+                    renderSystemCards();
+                } else if (data.status === 'error') {
+                    alert("Error: " + data.message);
+                }
             }
         } else {
-            const errData = await response.json().catch(() => ({}));
-            const errMsg = errData.message || "Network response was not ok";
-            alert("Server Error: " + errMsg);
-            console.error("Server Error Data:", errData);
+             alert("Server error");
         }
     } catch (e) {
+        console.error(e);
+        alert("Failed to send message");
         if (e.name === 'AbortError') {
             alert("Session timed out. Returning to home.");
             window.location.href = '/home';
-        } else {
-            console.error("Fetch error:", e);
-            alert("Connection failed. Please try again.");
-        }
+        } 
     } finally {
         removeThinking();
     }
@@ -555,18 +1339,61 @@ function closeAttributes() {
 }
 
 // --- Help System Logic ---
-const helpBtn = document.getElementById("help-btn");
+const helpData = {
+    'scene': {
+        title: "Scene Visualization",
+        text: "This shows the buildings, land, and public space that your decisions will physically change."
+    },
+    'climate': {
+        title: "Climate Pressure",
+        text: "This rises when buildings block wind, trap heat, or increase carbon emissions."
+    },
+    'economy': {
+        title: "Economic Pressure",
+        text: "This rises when the project becomes too expensive or risky to continue."
+    },
+    'ecology': {
+        title: "Ecological Pressure",
+        text: "This rises when green space, trees, or habitats are removed."
+    },
+    'mitigation': {
+        title: "Mitigation",
+        text: "Spend resources to temporarily reduce a pressure, at the cost of future capacity."
+    },
+    'tokens': {
+        title: "Influence Tokens",
+        text: "These let you persuade, pressure, or recruit other actors in the negotiation."
+    }
+};
+
+function showHelp(key) {
+    const data = helpData[key];
+    if (!data) return;
+
+    const overlay = document.getElementById("help-overlay");
+    const title = document.getElementById("help-title");
+    const body = document.getElementById("help-body");
+    
+    title.textContent = data.title;
+    body.innerHTML = data.text;
+    
+    overlay.classList.remove("hidden");
+}
+
 const helpOverlay = document.getElementById("help-overlay");
 const helpClose = document.getElementById("help-close");
+const helpCloseX = document.getElementById("help-close-x");
 
-if (helpBtn && helpOverlay && helpClose) {
-    helpBtn.onclick = () => helpOverlay.classList.remove("hidden");
-    helpClose.onclick = () => helpOverlay.classList.add("hidden");
+if (helpOverlay) {
+    const close = () => helpOverlay.classList.add("hidden");
+    if(helpClose) helpClose.onclick = close;
+    if(helpCloseX) helpCloseX.onclick = close;
     
     // Close when clicking outside content
     helpOverlay.onclick = (e) => {
+        // help-content is the white box, help-overlay is the backdrop
         if (e.target === helpOverlay) {
-            helpOverlay.classList.add("hidden");
+            close();
         }
     };
 }
@@ -649,6 +1476,309 @@ buttons.forEach(btn => {
     
     btn.addEventListener('touchend', hideTooltip);
 });
+
+// --- Onboarding Logic ---
+const onboardingData = [
+    {
+        title: "You are entering a contested city",
+        text: "This city is already under pressure from climate, finance, and ecology.<br>You are not designing on a blank slate — you are negotiating inside a system that can push back.",
+        target: null, // Center
+        btn: "Next"
+    },
+    {
+        title: "Every spatial change has systemic effects",
+        text: "This is the physical city. Changing building height, density, green space, or venue size will alter the pressures below.<br>What looks like a good design may create hidden risks.",
+        target: "scene-section",
+        btn: "Next"
+    },
+    {
+        title: "These are not scores. They are constraints.",
+        text: "Climate, Economic, and Ecological pressures are non-human forces.<br>They do not argue — they set limits, trigger consequences, and can veto your decisions.",
+        target: "constraints-section",
+        btn: "Next"
+    },
+    {
+        title: "Your Political Resources",
+        text: "Influence Tokens are your currency for persuasion.<br>You spend them to convince stakeholders to support your vision. Use them wisely.",
+        target: "tokens-section",
+        btn: "Next"
+    },
+    {
+        title: "System Mitigation",
+        text: "Mitigation allows you to spend capacity to soften system limits directly.<br>Use this to reduce pressure when your spatial changes push the system too far.",
+        target: "mitigation-section",
+        btn: "Enter the negotiation"
+    }
+];
+
+let onboardingStep = 0;
+
+const finalOnboardingData = {
+    title: "The Stage is Set",
+    text: "<i>Every great city starts with a difficult conversation.<br>You're in it now.<br>Good luck out there!</i>",
+    target: null, // Center
+    btn: "Begin"
+};
+
+function initOnboarding() {
+    // Only run on Round 1
+    if (state.currentRound !== 1) return;
+    
+    const overlay = document.getElementById('onboarding-overlay');
+    const card = document.getElementById('onboarding-card');
+    const btn = document.getElementById('ob-btn');
+    
+    overlay.classList.remove('hidden');
+    card.classList.add('active'); // Show card
+    
+    // slight delay for fade in
+    setTimeout(() => overlay.classList.add('active'), 50);
+    
+    btn.onclick = nextOnboardingStep;
+    
+    showStep(0);
+}
+
+function showStep(index) {
+    if (index >= onboardingData.length) {
+        endOnboarding();
+        return;
+    }
+    
+    const data = onboardingData[index];
+    const card = document.getElementById('onboarding-card');
+    const title = document.getElementById('ob-title');
+    const text = document.getElementById('ob-text');
+    const btn = document.getElementById('ob-btn');
+    const overlay = document.getElementById('onboarding-overlay');
+    
+    // Update Content
+    title.innerText = data.title;
+    text.innerHTML = data.text;
+    btn.innerText = data.btn;
+    
+    // --- RESET PREVIOUS STATE ---
+    document.querySelectorAll('.spotlight-active').forEach(el => el.classList.remove('spotlight-active'));
+    
+    // Reset specific overrides (restore CSS defaults)
+    const sceneWrapper = document.getElementById('scene-wrapper');
+    const dragPanel = document.getElementById('draggable-messages-panel');
+    const actionArea = document.getElementById('action-area');
+    
+    if (sceneWrapper) sceneWrapper.style.zIndex = '';
+    if (actionArea) actionArea.style.zIndex = '';
+    if (dragPanel) {
+        dragPanel.style.overflow = ''; // Restore to css default
+        dragPanel.style.zIndex = '';
+    }
+    
+    // Handle Positioning & Spotlight
+    if (data.target) {
+        // Spotlight Mode
+        overlay.style.backgroundColor = 'transparent'; // Let shadow do the darkening
+        
+        const targetEl = document.getElementById(data.target);
+        if (targetEl) {
+            targetEl.classList.add('spotlight-active');
+            
+            // --- APPLY STACKING FIXES ---
+            
+            if (data.target === 'scene-section' || data.target === 'constraints-section') {
+                if (sceneWrapper) sceneWrapper.style.zIndex = 'auto'; 
+            }
+            
+            if (data.target === 'tokens-section') {
+                if (dragPanel) {
+                    dragPanel.style.overflow = 'visible';
+                    dragPanel.style.zIndex = '4001'; // Promote above overlay (4000)
+                }
+            }
+            
+            if (data.target === 'mitigation-section') {
+                if (actionArea) actionArea.style.zIndex = '4001'; // Promote above overlay (4000)
+            }
+            
+            // Position card near target
+            const rect = targetEl.getBoundingClientRect();
+            const appEl = document.getElementById('app');
+            const appRect = appEl ? appEl.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, height: window.innerHeight };
+            const yTop = rect.top - appRect.top;
+            const yBottom = rect.bottom - appRect.top;
+            
+            card.style.position = 'absolute';
+            card.style.left = '50%';
+            card.style.transform = 'translateX(-50%)';
+            
+            if (yTop < appRect.height / 2) {
+                card.style.top = (yBottom + 20) + 'px';
+                card.style.bottom = 'auto';
+            } else {
+                card.style.bottom = ((appRect.bottom - rect.top) + 20) + 'px';
+                card.style.top = 'auto';
+            }
+
+            requestAnimationFrame(() => {
+                const pad = 16;
+                const cr = card.getBoundingClientRect();
+                const ar = appEl ? appEl.getBoundingClientRect() : appRect;
+                const vv2 = window.visualViewport;
+                const vvTop = vv2 ? vv2.offsetTop : 0;
+                const vvBottom = vv2 ? (vv2.offsetTop + vv2.height) : window.innerHeight;
+
+                const visibleTop = Math.max(ar.top, vvTop);
+                const visibleBottom = Math.min(ar.bottom, vvBottom);
+                let dy = 0;
+
+                if (cr.bottom > visibleBottom - pad) {
+                    dy = (visibleBottom - pad) - cr.bottom;
+                } else if (cr.top < visibleTop + pad) {
+                    dy = (visibleTop + pad) - cr.top;
+                }
+
+                if (dy !== 0) {
+                    if (card.style.top && card.style.top !== 'auto') {
+                        card.style.top = (parseFloat(card.style.top) + dy) + 'px';
+                    } else if (card.style.bottom && card.style.bottom !== 'auto') {
+                        card.style.bottom = (parseFloat(card.style.bottom) - dy) + 'px';
+                    }
+                }
+            });
+        }
+    } else {
+        // Intro Mode (Center, Dark Background)
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+        
+        card.style.position = 'absolute';
+        card.style.top = '50%';
+        card.style.left = '50%';
+        card.style.transform = 'translate(-50%, -50%)';
+        card.style.bottom = 'auto';
+    }
+}
+
+function nextOnboardingStep() {
+    onboardingStep++;
+    showStep(onboardingStep);
+}
+
+function endOnboarding() {
+    const overlay = document.getElementById('onboarding-overlay');
+    const card = document.getElementById('onboarding-card');
+    const title = document.getElementById('ob-title');
+    const text = document.getElementById('ob-text');
+    const btn = document.getElementById('ob-btn');
+    
+    // 1. Show Final Message Content
+    title.innerText = finalOnboardingData.title;
+    text.innerHTML = finalOnboardingData.text;
+    btn.innerText = finalOnboardingData.btn;
+    
+    // 2. Reset Overrides (Stop Spotlights)
+    const sceneWrapper = document.getElementById('scene-wrapper');
+    const dragPanel = document.getElementById('draggable-messages-panel');
+    const actionArea = document.getElementById('action-area');
+    
+    if (sceneWrapper) sceneWrapper.style.zIndex = '';
+    if (actionArea) actionArea.style.zIndex = '';
+    if (dragPanel) {
+        dragPanel.style.overflow = ''; 
+        dragPanel.style.zIndex = '';
+    }
+    document.querySelectorAll('.spotlight-active').forEach(el => el.classList.remove('spotlight-active'));
+
+    // 3. Center the Card & Darken Background
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+    card.style.position = 'absolute';
+    card.style.top = '50%';
+    card.style.left = '50%';
+    card.style.transform = 'translate(-50%, -50%)';
+    card.style.bottom = 'auto';
+
+    // 4. Next click closes everything
+    btn.onclick = cleanupOnboarding;
+}
+
+function cleanupOnboarding() {
+    const overlay = document.getElementById('onboarding-overlay');
+    const card = document.getElementById('onboarding-card');
+    
+    overlay.classList.remove('active');
+    card.classList.remove('active');
+    
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.style.backgroundColor = ''; // Reset
+        // sessionStorage.setItem('onboardingShown', 'true');
+    }, 500);
+}
+
+// --- Drag Logic for Messages Panel ---
+const dragPanel = document.getElementById('draggable-messages-panel');
+const dragHandle = document.getElementById('drag-handle');
+
+let isDragging = false;
+let startY = 0;
+let startTop = 0;
+const MIN_TOP = 60; // Safe margin from top
+
+function onDragStart(e) {
+    if (!dragPanel) return;
+    
+    // Check if the target is interactive (button, input, or help icon)
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('.help-icon')) {
+        return;
+    }
+    
+    isDragging = true;
+    startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+    
+    const style = window.getComputedStyle(dragPanel);
+    startTop = parseInt(style.top, 10);
+    
+    dragPanel.style.transition = 'none'; // Disable transition for instant drag
+    
+    if (!e.type.includes('touch')) {
+        e.preventDefault(); // Prevent text selection on mouse
+    }
+}
+
+function onDragMove(e) {
+    if (!isDragging || !dragPanel) return;
+    
+    const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+    const deltaY = clientY - startY;
+    let newTop = startTop + deltaY;
+    
+    // Constraints
+    if (newTop < MIN_TOP) newTop = MIN_TOP;
+    
+    const maxTop = window.innerHeight - 150; // Keep some part visible
+    if (newTop > maxTop) newTop = maxTop;
+    
+    dragPanel.style.top = `${newTop}px`;
+    
+    // Prevent default on touch to stop body scroll while dragging
+    if (e.type.includes('touch')) {
+        if (e.cancelable) e.preventDefault();
+    }
+}
+
+function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    if (dragPanel) dragPanel.style.transition = 'top 0.3s ease-out';
+}
+
+if (dragHandle) {
+    dragHandle.addEventListener('mousedown', onDragStart);
+    dragHandle.addEventListener('touchstart', onDragStart, {passive: false});
+}
+
+document.addEventListener('mousemove', onDragMove);
+document.addEventListener('mouseup', onDragEnd);
+
+document.addEventListener('touchmove', onDragMove, {passive: false});
+document.addEventListener('touchend', onDragEnd);
 
 </script>
 </body>

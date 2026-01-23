@@ -1,0 +1,126 @@
+
+# --- M2: Data Export APIs ---
+
+@app.route('/api/export/rooms')
+def export_rooms():
+    """List all rooms with basic stats."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+
+    conn, db_type = get_db_connection()
+    try:
+        # Get room stats from DB
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT room_id, count(*) as event_count, min(ts) as start_time, max(ts) as last_update 
+                    FROM events GROUP BY room_id
+                """)
+                rows = cur.fetchall()
+        else:
+             rows = conn.execute("""
+                SELECT room_id, count(*) as event_count, min(ts) as start_time, max(ts) as last_update 
+                FROM events GROUP BY room_id
+            """).fetchall()
+        
+        stats = {row['room_id']: dict(row) for row in rows}
+    except Exception as e:
+        print(f"Export Error: {e}")
+        stats = {}
+    finally:
+        conn.close()
+
+    # Merge with active memory rooms
+    data = []
+    all_ids = set(ROOMS.keys()) | set(stats.keys())
+    
+    for rid in all_ids:
+        mem_room = ROOMS.get(rid, {})
+        db_stat = stats.get(rid, {})
+        
+        data.append({
+            'roomId': rid,
+            'active': rid in ROOMS,
+            'phase': mem_room.get('phase', 'archived'),
+            'playerCount': len(mem_room.get('players', [])) if rid in ROOMS else 0,
+            'eventCount': db_stat.get('event_count', 0),
+            'startTime': db_stat.get('start_time'),
+            'lastUpdate': db_stat.get('last_update')
+        })
+    
+    return jsonify(data)
+
+@app.route('/api/export/room/<room_id>/events')
+def export_room_events(room_id):
+    """Export raw events for a room."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+         
+    conn, db_type = get_db_connection()
+    try:
+        query = "SELECT * FROM events WHERE room_id = %s ORDER BY ts ASC" if db_type == 'postgres' else "SELECT * FROM events WHERE room_id = ? ORDER BY ts ASC"
+        params = (room_id,)
+        
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+                events = [dict(row) for row in rows]
+        else:
+             rows = conn.execute(query, params).fetchall()
+             events = [dict(row) for row in rows]
+             
+        # Parse payload_json
+        for e in events:
+            if e.get('payload_json'):
+                try:
+                    e['payload'] = json.loads(e['payload_json'])
+                except:
+                    e['payload'] = {}
+            del e['payload_json']
+            
+        return jsonify(events)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/export/room/<room_id>/transcript')
+def export_room_transcript(room_id):
+    """Export readable transcript."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+
+    conn, db_type = get_db_connection()
+    try:
+        query = "SELECT * FROM events WHERE room_id = %s AND event_type = 'MESSAGE_SENT' ORDER BY ts ASC" if db_type == 'postgres' else "SELECT * FROM events WHERE room_id = ? AND event_type = 'MESSAGE_SENT' ORDER BY ts ASC"
+        params = (room_id,)
+        
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+        else:
+             rows = conn.execute(query, params).fetchall()
+        
+        transcript = []
+        for row in rows:
+            payload = {}
+            try:
+                payload = json.loads(row['payload_json'])
+            except:
+                pass
+            
+            transcript.append({
+                'ts': row['ts'],
+                'role': row['role'],
+                'text': payload.get('text', ''),
+                'zone': payload.get('zone', ''),
+                'round': row['round_index']
+            })
+            
+        return jsonify(transcript)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()

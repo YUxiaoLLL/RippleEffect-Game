@@ -1,9 +1,16 @@
-from flask import Flask, render_template, Response, request, jsonify, session, send_from_directory, redirect, url_for, flash
+import eventlet
+eventlet.monkey_patch()
+
+from flask import Flask, render_template, Response, request, jsonify, session, send_from_directory, redirect, url_for, flash, make_response
+import uuid
+import time
+from flask_socketio import join_room
 from flask_socketio import SocketIO
 from typing import List
 import random
 import os
 import json
+import re
 import requests
 import math
 from collections import Counter
@@ -13,16 +20,120 @@ from dotenv import load_dotenv
 from pathlib import Path
 from models import SceneState, Block, Action, SceneUpdate
 from agents.persona_engine import generate_dna_persona
-from agents.persona_data import STYLES # Import STYLES dictionary
+from agents.persona_data import STYLES, ROLE_SPEECH_CONSTRAINTS, NUMERIC_POLICY, SPATIAL_GROUNDING_EXAMPLES # Import AI Response Engine v1.0 constants
+from constraint_layer import ConstraintLayer, state_from_dict, state_to_dict, ConstraintState # Import Constraint Layer
 # import ezdxf
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
+from zone_context import load_zone_facts, infer_active_zone_id, compute_issue_tag, zone_context_text, validate_ai_dialogue
 
-# Load environment variables from .env file
+# --- Database & Logging Setup (M2) ---
+import sqlite3
+import datetime
+from urllib.parse import urlparse
+
+# Try importing psycopg2 for Postgres (Production)
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+
+def get_db_connection():
+    """Get database connection (Postgres if DATABASE_URL set, else SQLite)."""
+    db_url = os.environ.get('DATABASE_URL')
+    
+    if db_url and HAS_POSTGRES:
+        try:
+            conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+            return conn, 'postgres'
+        except Exception as e:
+            print(f"Postgres connection failed: {e}. Falling back to SQLite.")
+            
+    # Fallback to SQLite
+    conn = sqlite3.connect('ripple.db')
+    conn.row_factory = sqlite3.Row
+    return conn, 'sqlite'
+
+def init_db():
+    """Initialize database schema (Events table)."""
+    conn, db_type = get_db_connection()
+    try:
+        if db_type == 'postgres':
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id TEXT PRIMARY KEY,
+                        ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        room_id TEXT,
+                        player_id TEXT,
+                        role TEXT,
+                        event_type TEXT,
+                        round_index INTEGER,
+                        turn_index INTEGER,
+                        payload_json TEXT
+                    );
+                """)
+            conn.commit()
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id TEXT PRIMARY KEY,
+                    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    room_id TEXT,
+                    player_id TEXT,
+                    role TEXT,
+                    event_type TEXT,
+                    round_index INTEGER,
+                    turn_index INTEGER,
+                    payload_json TEXT
+                );
+            """)
+            conn.commit()
+            print("Initialized SQLite database (ripple.db).")
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+    finally:
+        conn.close()
+
+def log_event(room_id, player_id, event_type, payload=None, role=None, round_idx=None, turn_idx=None):
+    """Log an event to the database (async-safe wrapper)."""
+    try:
+        conn, db_type = get_db_connection()
+        event_id = str(uuid.uuid4())
+        payload_json = json.dumps(payload) if payload else '{}'
+        
+        if db_type == 'postgres':
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO events (id, room_id, player_id, role, event_type, round_index, turn_index, payload_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (event_id, room_id, player_id, role, event_type, round_idx, turn_idx, payload_json))
+            conn.commit()
+        else:
+            conn.execute("""
+                INSERT INTO events (id, room_id, player_id, role, event_type, round_index, turn_index, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (event_id, room_id, player_id, role, event_type, round_idx, turn_idx, payload_json))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Logging Error: {e}")
+
+# Initialize DB on startup
+init_db()
+
+# --- Load environment variables from .env file
 dotenv_path = Path('.') / '.env'  # Explicitly point to .env in current directory
 load_dotenv(dotenv_path=dotenv_path)
 
 # --- Debug: Check if API key is loaded --- #
-print(f"DEBUG: OPENAI_API_KEY loaded from environ: {os.environ.get('OPENAI_API_KEY')}")
+_openai_key = os.environ.get('OPENAI_API_KEY')
+print(
+    "DEBUG: OPENAI_API_KEY loaded from environ: "
+    + ("<missing>" if not _openai_key else f"<set: ...{_openai_key[-4:]}")
+)
 # --- End Debug --- #
 
 # --- Setup ---
@@ -34,6 +145,8 @@ STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
 THREE_JS_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static', '3d_client')
 THREE_DATA_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static', '3d_data')
 
+ZONE_FACTS, ZONE_FACT_ZONES = load_zone_facts(BASE_DIR)
+
 print(f"DEBUG: BASE_DIR: {BASE_DIR}")
 print(f"DEBUG: PROJECT_ROOT: {PROJECT_ROOT}")
 print(f"DEBUG: TEMPLATE_DIR: {TEMPLATE_DIR}")
@@ -42,8 +155,11 @@ print(f"DEBUG: THREE_JS_DIR: {THREE_JS_DIR}")
 print(f"DEBUG: Does THREE_JS_DIR exist? {os.path.isdir(THREE_JS_DIR)}")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', logger=True, engineio_logger=True)
 app.secret_key = os.urandom(24)  # More secure secret key
+
+# --- Constraint Layer Setup ---
+constraint_layer = ConstraintLayer()
 
 # --- Server-Side Session Configuration ---
 app.config['SESSION_TYPE'] = 'filesystem'  # Store session data in files
@@ -52,6 +168,89 @@ app.config['SESSION_USE_SIGNER'] = True  # Encrypt session cookie identifier
 app.config['SESSION_FILE_DIR'] = './.flask_session'  # Optional: Specify directory
 Session(app)  # Initialize the session extension
 
+@app.before_request
+def _log_request_path():
+    try:
+        if request.path.startswith('/static/'):
+            return
+    except Exception:
+        pass
+    print(f"REQ {request.method} {request.path} from {request.remote_addr}")
+
+@app.errorhandler(Exception)
+def _log_unhandled_exception(e):
+    if isinstance(e, HTTPException):
+        return e
+    import traceback
+    traceback.print_exc()
+    return "Internal Server Error", 500
+
+# --- Multiplayer Room State ---
+ROOMS = {}  # Global in-memory room storage
+MAX_ROOMS_TOTAL = 3 # M1: Limit total rooms for stability
+
+# M1: Global Access Gate
+SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '2026'
+
+@app.before_request
+def check_access():
+    """M1: Gate all access behind a global PIN."""
+    # Allow static resources and specific endpoints
+    if request.endpoint in ('login', 'static', 'health_check'):
+        return
+    if request.path.startswith('/static/'):
+        return
+        
+    # Check session authentication
+    if not session.get('authenticated'):
+        # For API requests, return 401 instead of redirecting
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Unauthorized', 'redirect': url_for('login')}), 401
+            
+        return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """M1: Login page for global access."""
+    if request.method == 'POST':
+        pin = request.form.get('pin')
+        # Simple check - in production use constant-time comparison if strict security needed
+        if pin == SITE_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('room_gate'))
+        else:
+            return render_template('login.html', error="Invalid PIN")
+    
+    return render_template('login.html')
+
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'ok'})
+
+def _get_public_room_state(room_id):
+    """Return a sanitized view of the room state for clients."""
+    room = ROOMS.get(room_id)
+    if not room:
+        return {}
+
+    game_state = room.get('game_state') or {}
+    result = {
+        'roomId': room_id,
+        'phase': room.get('phase', 'lobby'),
+        'players': room.get('players', []),
+        'hostId': room.get('hostId'),
+        'config': room.get('config', {'maxHumans': 4, 'aiCount': 0}), # Ensure config is passed
+        'chapterId': room.get('chapterId'),
+        'createdAt': room.get('createdAt'),
+    }
+    if room.get('phase') == 'inGame' and game_state:
+        result['turnOrder'] = game_state.get('turn_order', [])
+        result['turnIndex'] = game_state.get('turn_index', 0)
+        result['currentSpeaker'] = game_state.get('current_speaker')
+        result['roundIndex'] = (game_state.get('negotiation_state') or {}).get('round', 1)
+        result['characters'] = game_state.get('characters', [])
+        result['history'] = (game_state.get('negotiation_state') or {}).get('history', [])
+    return result
 
 # --- Game Constants ---
 STANCES = {
@@ -110,6 +309,89 @@ CRITICAL_CLIMATE_THRESHOLD = 20  # If climate drops <= 20, it's a failure
 
 # Sample names for AI characters
 SAMPLE_NAMES = ["Alex", "Ben", "Casey", "Devin", "Erin", "Frankie", "Gabby", "Hayden", "Izzy", "Jamie", "Fatima Ahmed", "David Chen", "Maria Garcia", "Kenji Tanaka", "Chloe Dubois"]
+
+STANCE_MATRIX = {
+    'community_activist': {
+        'K1': [
+            'Emphasize allocation fairness, anti-displacement safeguards, and transparent management rules.',
+            'Reject vague promises; demand explicit eligibility rules and long-term affordability protections.',
+        ],
+        'A1': [
+            'Demand enforceable local benefit commitments tied to the workspace delivery.',
+            'Question who benefits from jobs and what protections exist against displacement.',
+        ],
+        'A2': [
+            'Insist leisure centre access is equitable (pricing, hours, eligibility) and enforceable.',
+            'Tie jobs/workspace commitments to training and local hiring.',
+        ],
+    },
+    'council_planner': {
+        'K1': [
+            'Focus on compliance, allocation criteria, measurable rules, and governance.',
+            'Offer executable thresholds and reporting requirements to maintain trust.',
+        ],
+        'A1': [
+            'Frame commitments as conditions of approval with monitoring and enforcement.',
+        ],
+        'A2': [
+            'Define access/pricing rules for the leisure centre and measurable local benefit commitments.',
+        ],
+    },
+    'developer': {
+        'K1': [
+            'Emphasize feasibility, delivery risk, phasing, and costs; propose trade-offs and delivery constraints.',
+            'Avoid taking credit; position as responsible delivery partner with clear commitments.',
+        ],
+        'A1': [
+            'Use workspace delivery and ground-floor activation to justify jobs and footfall; mention phasing and feasibility.',
+        ],
+        'A2': [
+            'Balance leisure centre operations with commercial viability; mention peak-time management and delivery risk.',
+        ],
+    },
+    'resident_homeowner': {
+        'K1': [
+            'Focus on livability, fairness, and trust: who benefits, and how does this affect existing residents?',
+        ],
+        'A1': [
+            'Focus on noise, congestion, shadows, and day-to-day disruption; demand mitigations and timing limits.',
+        ],
+        'A2': [
+            'Focus on crowding, safety, congestion, and noise; require operational rules and enforcement.',
+        ],
+    },
+    'urban_designer': {
+        'A1': [
+            'Anchor arguments in public realm continuity, edges, permeability, and frontage quality.',
+        ],
+        'A2': [
+            'Discuss how mixed uses are organized to reduce conflict; focus on access, transitions, and safety.',
+        ],
+        'K1': [
+            'Focus on tenure security communicated through design and management, and how public realm builds trust.',
+        ],
+    },
+    'potential_buyer': {
+        'A1': [
+            'Focus on safety, amenity, and long-term value but stay grounded in concrete commitments.',
+        ],
+        'A2': [
+            'Focus on quality of life and management of crowds; ask for clear operating rules.',
+        ],
+        'K1': [
+            'Focus on neighborhood stability and fairness; ask how the plan avoids conflict and builds trust.',
+        ],
+    },
+}
+
+ROLE_VOICE_KEYWORDS = {
+    'community_activist': ['demand', 'require', 'must', 'guarantee', 'commit', 'enforce'],
+    'developer': ['feasible', 'deliver', 'delivery', 'timeline', 'phasing', 'cost', 'budget', 'risk'],
+    'council_planner': ['policy', 'criteria', 'allocation', 'compliance', 'threshold', 'monitoring', 'enforcement', 'metric'],
+    'resident_homeowner': ['noise', 'traffic', 'rent', 'safety', 'crowd', 'parking', 'disruption'],
+    'urban_designer': ['public realm', 'permeability', 'frontage', 'edges', 'interface', 'access', 'street'],
+    'potential_buyer': ['value', 'safety', 'schools', 'investment', 'market', 'quality'],
+}
 
 # --- Personality Seed System Data ---
 PERSONALITY_TRAITS = {
@@ -282,16 +564,28 @@ def customization():
         session['characters'] = all_characters
 
         # 3. Initialize Negotiation State
+        # Import constraint helpers here (lazy import to avoid circular dep if any)
+        
+        # Create default constraint state (defaults are already 35/40/30 in the class)
+        default_c_state = ConstraintState()
+        
         session['negotiation_state'] = {
             'round': 1,
             'history': [],
+            'history_meta': [],
             'outcome': None,
             'negotiation_climate': 50,
+            'active_zone_id': 'GLOBAL',
+            'active_issue_tag': compute_issue_tag('GLOBAL'),
             'issues': {
                 'affordable_share': 35,
                 'cultural_venue_scale': 'medium',
                 'housing_location_mix': 'balanced'
-            }
+            },
+            'constraint_state': state_to_dict(default_c_state),
+            'constraint_last': {},
+            'current_round_dialogue': {},
+            'current_round_meta': {},
         }
         
         # 4. Start Game
@@ -547,19 +841,50 @@ def characters_profiles():
 
 @app.route('/negotiation', methods=['GET', 'POST'])
 def negotiation():
-    # Ensure negotiation has been initialized
-    if 'negotiation_state' not in session or 'characters' not in session or 'player_profile' not in session:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-             return jsonify({'status': 'error', 'message': "Session expired. Please reload."}), 403
-        flash("Game session not found or incomplete. Please start a new game.", "error")
-        return redirect(url_for('role_selection'))
+    # Check for multiplayer room session
+    room_id = session.get('room_id')
+    is_multiplayer = False
+    
+    if room_id and room_id in ROOMS:
+        room = ROOMS[room_id]
+        if room.get('phase') == 'inGame':
+            is_multiplayer = True
+            game_state = room['game_state']
+            negotiation_state = game_state['negotiation_state']
+            characters = game_state['characters']
+            player_id = session.get('player_id')
+            # Find my profile in the room characters
+            player_profile = next((c for c in characters if c.get('id') == player_id), None)
+            
+            if not player_profile:
+                flash("Player not found in this room.", "error")
+                return redirect(url_for('role_selection'))
 
-    negotiation_state = session['negotiation_state']
-    characters = session.get('characters', [])
-    player_profile = session.get('player_profile', None)
+    # Fallback to single player session if not in a valid multiplayer game
+    if not is_multiplayer:
+        # Ensure negotiation has been initialized
+        if 'negotiation_state' not in session or 'characters' not in session or 'player_profile' not in session:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                 return jsonify({'status': 'error', 'message': "Session expired. Please reload."}), 403
+            flash("Game session not found or incomplete. Please start a new game.", "error")
+            return redirect(url_for('role_selection'))
+
+        negotiation_state = session['negotiation_state']
+        characters = session.get('characters', [])
+        player_profile = session.get('player_profile', None)
+
+    # --- Ensure Constraint State Exists & Is Valid (Safety Check) ---
+    c_state = negotiation_state.get('constraint_state')
+    if not c_state or 'climate_pressure' not in c_state:
+        # Defaults are 35, 40, 30
+        negotiation_state['constraint_state'] = state_to_dict(ConstraintState())
+        if not is_multiplayer:
+            session.modified = True
+
     current_round = negotiation_state['round']
 
-    if request.method == 'POST':
+    # --- POST Handling (Single Player Only - Multiplayer uses API) ---
+    if request.method == 'POST' and not is_multiplayer:
         try:
             action = request.form.get('action')  # Check which button was pressed
 
@@ -620,6 +945,16 @@ def negotiation():
 
             if player_statement:
                 round_dialogue = {player_id: player_statement}  # Start round with player
+                zid = infer_active_zone_id(player_statement, negotiation_state.get('active_zone_id') or 'GLOBAL')
+                negotiation_state['active_zone_id'] = zid
+                negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
+                round_meta = {
+                    player_id: {
+                        'zone_id': zid,
+                        'issue_tag': negotiation_state.get('active_issue_tag'),
+                        'role_id': (player_profile or {}).get('role_id'),
+                    }
+                }
 
                 # --- Clear Previous Skip Flags & Trigger/Apply Event --- #
                 for char in characters:
@@ -636,9 +971,23 @@ def negotiation():
                     else:
                         flash(event_text, 'info')  # Display event message to player
 
-                ai_responses_data = get_ai_responses(characters, negotiation_state.get('history', []),
-                                                     player_statement, climate_score, negotiation_state.get('issues', {}))
-                round_dialogue.update({ai_id: data['response'] for ai_id, data in ai_responses_data.items()})
+                ai_responses_data = get_ai_responses(
+                    characters,
+                    negotiation_state.get('history', []),
+                    player_statement,
+                    climate_score,
+                    negotiation_state.get('issues', {}),
+                    active_zone_id=zid,
+                    current_round=current_round,
+                )
+                for ai_id, data in (ai_responses_data or {}).items():
+                    round_dialogue[ai_id] = data.get('response')
+                    ai_char = next((c for c in characters if c.get('id') == ai_id), {})
+                    round_meta[ai_id] = {
+                        'zone_id': zid,
+                        'issue_tag': negotiation_state.get('active_issue_tag'),
+                        'role_id': (ai_char or {}).get('role_id'),
+                    }
 
                 for char in characters:
                     if not char.get('is_player') and char['id'] in ai_responses_data:
@@ -652,7 +1001,85 @@ def negotiation():
                     negotiation_state['negotiation_climate'] = max(0, min(100, climate_score + climate_change))
 
                 negotiation_state.setdefault('history', []).append(round_dialogue)
+                negotiation_state.setdefault('history_meta', []).append(round_meta)
                 negotiation_state['round'] = current_round + 1
+
+                # --- Constraint Layer Integration ---
+                # 1. Capture Old State (for deltas)
+                old_issues = negotiation_state.get('issues', {}).copy()
+                old_aff = old_issues.get('affordable_housing', {}).get('share_percentage', 35)
+                # old_venue = old_issues.get('cultural_venue', {}).get('scale', 'medium') 
+
+                # 2. Update Issues (Existing Logic)
+                negotiation_state['issues'] = update_issues_based_on_stances(characters, negotiation_state.get('issues', {}))
+                
+                # 3. Calculate Deltas for Constraint Layer
+                new_issues = negotiation_state['issues']
+                new_aff = new_issues.get('affordable_housing', {}).get('share_percentage', 35)
+                delta_aff = new_aff - old_aff
+                
+                # Venue scale
+                venue_scale = new_issues.get('cultural_venue', {}).get('scale', 'medium')
+                
+                # Spatial deltas - currently placeholders or derived from other factors
+                # For now, we assume density correlates slightly with affordable housing increases or specific events
+                delta_density = 0
+                if delta_aff > 0: 
+                    delta_density = 0.05 * delta_aff # increasing affordable housing might imply slight density increase
+
+                delta_public_space = 0
+                delta_green_space = 0
+                
+                # Construct Actions Dict
+                # Use mitigation from form if available (add to UI later)
+                player_mitigation = request.form.get('mitigation', 'none') 
+                
+                constraint_actions = {
+                    "delta_height_pct": 0,          # Placeholder until spatial edit connected
+                    "delta_density": delta_density,
+                    "delta_public_space_pct": delta_public_space,
+                    "delta_green_space_pct": delta_green_space,
+                    "delta_affordable_pct": delta_aff,
+                    "venue_scale": venue_scale,
+                    "mitigation": player_mitigation 
+                }
+
+                # 4. Load & Step Constraint Layer
+                # Initialize constraint state if missing
+                if 'constraint_state' not in negotiation_state:
+                     # Create default state and convert to dict for storage
+                     negotiation_state['constraint_state'] = state_to_dict(ConstraintState())
+                
+                c_state_dict = negotiation_state['constraint_state']
+                c_state = state_from_dict(c_state_dict)
+                
+                # Call step
+                c_result = constraint_layer.step(c_state, constraint_actions, current_round)
+                
+                # 5. Persist Results
+                negotiation_state['constraint_state'] = state_to_dict(c_result.state)
+                negotiation_state['constraint_last'] = {
+                    "notices": c_result.notices,
+                    "penalties": c_result.penalties,
+                    "locks": c_result.locks,
+                    "triggered_events": c_result.triggered_events,
+                    "executed_events": c_result.executed_events,
+                }
+                
+                # 6. Apply Penalties to Game State
+                # Token Regen Penalty
+                if "token_regen_delta" in c_result.penalties:
+                     # We store this in session to apply during regenerate_tokens_for_round
+                     session['token_regen_delta'] = c_result.penalties["token_regen_delta"]
+
+                # Council Support (Direct Stance Impact)
+                if "council_support_delta" in c_result.penalties:
+                    delta = c_result.penalties["council_support_delta"]
+                    # Find council planner and adjust stance
+                    for char in characters:
+                        if char['role_id'] == 'council_planner':
+                             char['stance_score'] = max(0, min(100, char['stance_score'] + delta))
+                             print(f"Constraint Penalty: Council stance adjusted by {delta}")
 
                 if negotiation_state['round'] > MAX_ROUNDS:
                     negotiation_state['outcome'] = check_victory(characters, negotiation_state['negotiation_climate'],
@@ -663,6 +1090,13 @@ def negotiation():
                     requests.post("http://127.0.0.1:5006/apply-issue-update", json=negotiation_state['issues'], timeout=1)
                 except Exception as e:
                     print(f"Could not send issue update to visualization: {e}")
+
+                # --- SocketIO Emission for Constraint Layer ---
+                try:
+                    socketio.emit("constraint_update", negotiation_state['constraint_last'])
+                    socketio.emit("constraint_meters", negotiation_state['constraint_state'])
+                except Exception as e:
+                    print(f"Error emitting constraint socket events: {e}")
 
                 session['negotiation_state'] = negotiation_state
                 session['characters'] = characters
@@ -675,9 +1109,11 @@ def negotiation():
                         'status': 'success',
                         'new_round': negotiation_state['round'],
                         'climate_score': negotiation_state['negotiation_climate'],
-                        'history': format_history_as_messages(negotiation_state.get('history', [])),
+                        'history': format_history_as_messages(negotiation_state.get('history', []), current_user_id=player_id),
                         'player_tokens': player_profile.get('influence_tokens', 0),
-                        'event_text': event_text
+                        'event_text': event_text,
+                        'constraintState': negotiation_state.get('constraint_state', {}),
+                        'constraintLast': negotiation_state.get('constraint_last', {})
                     })
 
             return redirect(url_for('negotiation'))
@@ -693,29 +1129,62 @@ def negotiation():
 
 
     # --- GET Request ---
-    regenerate_tokens_for_round(session)
+    if not is_multiplayer:
+        regenerate_tokens_for_round(session)
 
     characters_for_template = []
-    previous_stances = session.get('previous_stance', {})
-    for char in session.get('characters', []):
+    # Previous stance logic (Single player only for now)
+    previous_stances = session.get('previous_stance', {}) if not is_multiplayer else {}
+    for char in characters:
         char_copy = char.copy()
         char_copy['previous_stance'] = previous_stances.get(char['id'])
         characters_for_template.append(char_copy)
 
-    session.pop('previous_stance', None)
+    if not is_multiplayer:
+        session.pop('previous_stance', None)
     
     # Prepare state with formatted history for initial load
-    state_for_template = session.get('negotiation_state', {}).copy()
+    state_for_template = negotiation_state.copy()
     if 'history' in state_for_template:
-        state_for_template['history'] = format_history_as_messages(state_for_template['history'])
+        current_viewer_id = player_profile.get('id') if player_profile else None
+        state_for_template['history'] = format_history_as_messages(
+            state_for_template['history'],
+            current_user_id=current_viewer_id,
+            meta_history=state_for_template.get('history_meta', []) or [],
+            characters=characters_for_template,
+        )
+
+    # Room ID for template if multiplayer
+    current_room_id = room_id if is_multiplayer else None
+
+    # Multiplayer round controller initial state
+    is_host = False
+    turn_order = []
+    turn_index = 0
+    current_speaker = None
+    if is_multiplayer:
+        is_host = (room.get('hostId') == player_id) or _is_host_request()
+        turn_order = game_state.get('turn_order', [])
+        turn_index = game_state.get('turn_index', 0)
+        current_speaker = game_state.get('current_speaker')
+
+    active_zone_id = (negotiation_state.get('active_zone_id') or 'GLOBAL').upper()
+    active_zone_facts = (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {})
 
     return render_template('round_gaming.html',
                            state=state_for_template,
                            characters=characters_for_template,
-                           player_profile=session.get('player_profile', {}),
-                           climate_score=session.get('negotiation_state', {}).get('negotiation_climate', 50),
+                           player_profile=player_profile,
+                           climate_score=negotiation_state.get('negotiation_climate', 50),
                            max_rounds=MAX_ROUNDS,
-                           INFLUENCE_ACTION_COSTS=INFLUENCE_ACTION_COSTS)
+                           INFLUENCE_ACTION_COSTS=INFLUENCE_ACTION_COSTS,
+                           room_id=current_room_id,
+                           is_host=is_host,
+                           turn_order=turn_order,
+                           turn_index=turn_index,
+                           current_speaker=current_speaker,
+                           active_zone_facts=active_zone_facts)
+
 
 @app.route('/negotiation_mvp_demo')
 def negotiation_mvp_demo():
@@ -805,30 +1274,109 @@ def negotiation_mvp():
 @app.route('/api/negotiation/state')
 def get_negotiation_state():
     """API endpoint to get current negotiation state as JSON."""
+    # Multiplayer in-room state
+    room_id = session.get('room_id')
+    if room_id and room_id in ROOMS:
+        room = ROOMS[room_id]
+        if room.get('phase') == 'inGame':
+            game_state = room.get('game_state') or {}
+            negotiation_state = game_state.get('negotiation_state') or {}
+            characters = game_state.get('characters') or []
+
+            player_id = session.get('player_id')
+            player_profile = next((c for c in characters if c.get('id') == player_id), {})
+
+            is_host = (room.get('hostId') == player_id) or _is_host_request()
+
+            history = negotiation_state.get('history', []) or []
+            history_meta = negotiation_state.get('history_meta', []) or []
+            current_round_dialogue = negotiation_state.get('current_round_dialogue') or {}
+            current_round_meta = negotiation_state.get('current_round_meta') or {}
+            combined_history = history
+            combined_meta = history_meta
+            if current_round_dialogue:
+                combined_history = history + [current_round_dialogue]
+                combined_meta = history_meta + [current_round_meta]
+
+            active_zone_id = negotiation_state.get('active_zone_id') or 'GLOBAL'
+            active_issue_tag = negotiation_state.get('active_issue_tag') or compute_issue_tag(active_zone_id)
+
+            return jsonify({
+                'currentRound': negotiation_state.get('round', 1),
+                'stakeholders': characters,
+                'playerProfile': player_profile,
+                'climateScore': negotiation_state.get('negotiation_climate', 50),
+                'messages': format_history_as_messages(
+                    combined_history,
+                    current_user_id=player_id,
+                    meta_history=combined_meta,
+                    characters=characters,
+                ),
+                'issues': negotiation_state.get('issues', {}),
+                'constraintState': negotiation_state.get('constraint_state', {}),
+                'constraintLast': negotiation_state.get('constraint_last', {}),
+                'isMultiplayer': True,
+                'roomId': room_id,
+                'myPlayerId': player_id,
+                'isHost': is_host,
+                'turnOrder': game_state.get('turn_order', []),
+                'turnIndex': game_state.get('turn_index', 0),
+                'currentSpeaker': game_state.get('current_speaker'),
+                'activeZoneId': active_zone_id,
+                'activeIssueTag': active_issue_tag,
+                'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
+            })
+
+    # Single player session state
     if 'negotiation_state' not in session:
         return jsonify({'error': 'No active negotiation'}), 404
-    
+
+    active_zone_id = session['negotiation_state'].get('active_zone_id') or 'GLOBAL'
+    active_issue_tag = session['negotiation_state'].get('active_issue_tag') or compute_issue_tag(active_zone_id)
     return jsonify({
         'currentRound': session['negotiation_state'].get('round', 1),
         'stakeholders': session.get('characters', []),
         'playerProfile': session.get('player_profile', {}),
         'climateScore': session['negotiation_state'].get('negotiation_climate', 50),
-        'messages': format_history_as_messages(session['negotiation_state'].get('history', [])),
-        'issues': session['negotiation_state'].get('issues', {})
+        'messages': format_history_as_messages(
+            session['negotiation_state'].get('history', []),
+            current_user_id=(session.get('player_profile') or {}).get('id'),
+            meta_history=session['negotiation_state'].get('history_meta', []) or [],
+            characters=session.get('characters', []) or [],
+        ),
+        'issues': session['negotiation_state'].get('issues', {}),
+        'constraintState': session['negotiation_state'].get('constraint_state', {}),
+        'constraintLast': session['negotiation_state'].get('constraint_last', {}),
+        'activeZoneId': active_zone_id,
+        'activeIssueTag': active_issue_tag,
+        'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
     })
 
-def format_history_as_messages(history):
+def format_history_as_messages(history, current_user_id=None, meta_history=None, characters=None):
     """Convert dialogue history to message format for frontend."""
     messages = []
+    meta_history = meta_history or []
+    char_lookup = {c.get('id'): c for c in (characters or []) if c.get('id')}
     for round_idx, round_dialogue in enumerate(history):
         for char_id, statement in round_dialogue.items():
-            is_player = char_id.startswith('player_')
+            meta_round = meta_history[round_idx] if round_idx < len(meta_history) and isinstance(meta_history[round_idx], dict) else {}
+            meta = meta_round.get(char_id, {}) if isinstance(meta_round, dict) else {}
+
+            if current_user_id is not None:
+                is_player = (char_id == current_user_id)
+            else:
+                is_player = char_id.startswith('player_')
+
+            speaker = char_lookup.get(char_id) or {}
             messages.append({
                 'id': f"{round_idx}_{char_id}",
                 'sender': 'player' if is_player else 'ai',
                 'stakeholderId': None if is_player else char_id,
                 'content': statement,
-                'timestamp': None  # Could add timestamps if needed
+                'timestamp': None,
+                'zoneId': meta.get('zone_id'),
+                'issueTag': meta.get('issue_tag'),
+                'speakerRoleId': (meta.get('role_id') or speaker.get('role_id')),
             })
     return messages
 
@@ -878,12 +1426,31 @@ def format_history_for_prompt(history, characters_lookup):
     return prompt_history
 
 
-def get_ai_responses(characters, history, player_statement, climate_score, issues):
+def get_ai_responses(characters, history, player_statement, climate_score, issues, only_ai_id=None, active_zone_id=None, current_round=None):
     """
     Generates responses using the DNA Persona Engine.
     """
     print("\n--- Generating AI Responses (Persona Engine Active) --- ")
+
+    def _try_parse_json_object(text):
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+        try:
+            start = text.find('{')
+            end = text.rfind('}')
+            if start == -1 or end == -1 or end <= start:
+                return None
+            return json.loads(text[start:end + 1])
+        except Exception:
+            return None
+
     active_ai_characters = [c for c in characters if not c.get('is_player') and not c.get('skipped_round')]
+    if only_ai_id:
+        active_ai_characters = [c for c in active_ai_characters if c.get('id') == only_ai_id]
 
     responses_data = {}
     client = None
@@ -895,6 +1462,24 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
     # Prepare history
     char_lookup = {c['id']: c for c in characters}
     history_text = format_history_for_prompt(history, char_lookup)
+
+    zid = (active_zone_id or infer_active_zone_id(player_statement, 'GLOBAL') or 'GLOBAL').upper()
+    zone_info, zone_ctx_text = zone_context_text(zid, ZONE_FACT_ZONES)
+    issue_tag = compute_issue_tag(zid)
+    must_keywords = (zone_info or {}).get('must_mention_keywords') or []
+
+    round_no = 1
+    try:
+        if current_round is not None:
+            round_no = int(current_round)
+    except Exception:
+        round_no = 1
+
+    zone_prompts = (zone_info or {}).get('discussion_prompts') or []
+    if zone_prompts:
+        round_prompt = zone_prompts[(max(round_no, 1) - 1) % len(zone_prompts)]
+    else:
+        round_prompt = "Respond to the player's statement with concrete commitments and a pointed question."
 
     for ai in active_ai_characters:
         # --- 1. PERSONA GENERATION / RETRIEVAL ---
@@ -917,7 +1502,7 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
         # Climate modifier
         if climate_score < 30: emotion += " (Tense Atmosphere)"
         
-        # --- 3. PROMPT ENGINEERING (ULTIMATE VERSION) ---
+        # --- 3. PROMPT ENGINEERING (ULTIMATE VERSION v1.0) ---
         issues_summary = (
             f"- Affordable Housing: {issues.get('affordable_housing', {}).get('share_percentage', 'N/A')}% share.\n"
             f"- Cultural Venue: {issues.get('cultural_venue', {}).get('scale', 'N/A')} scale.\n"
@@ -931,11 +1516,11 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
         style_keywords = ", ".join(style_dna.get('keywords', []))
         style_grammar = style_dna.get('grammar', 'Standard English')
 
-        # Inject Masterplan Context with AI Perception (Simple Logic)
+        # Inject Masterplan Context with AI Perception
         masterplan_context = "1. **The Map (Spatial Reality)**:\n"
         for plot_id, plot_data in MASTERPLAN_DATA.items():
             if 'description' in plot_data:
-                # Simple sentiment based on role (Mock logic for now, can be expanded)
+                # Simple sentiment based on role
                 impact = "Neutral"
                 if ai['role_id'] == 'community_activist' and 'luxury' in plot_data.get('ai_tags', []):
                     impact = "Negative (Symbol of Inequality)"
@@ -944,29 +1529,75 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
                 
                 masterplan_context += f"   - {plot_data['name']}: {plot_data['description']} -> Impact on you: {impact}\n"
 
+        stance_lines = (STANCE_MATRIX.get(ai.get('role_id')) or {}).get(zid, [])
+        stance_guidance = " ".join([s for s in stance_lines if s])
+
+        # --- NEW: Round 1 Logic (Role x Speech Depth) ---
+        speech_constraints = ""
+        if round_no == 1:
+            constraints = ROLE_SPEECH_CONSTRAINTS.get(ai['role_id'], {})
+            allowed_topics = ", ".join(constraints.get('allowed', []))
+            forbidden_topics = ", ".join(constraints.get('forbidden', []))
+            
+            speech_constraints = (
+                f"[Round 1 Rules - STRICT]\n"
+                f"1. **NO Executable Terms**: Do not use specific numbers (like '60%', '£18m'), legal statutes, specific years, or finalized agreements.\n"
+                f"2. **Role Depth**: Focus ONLY on these themes: {allowed_topics}.\n"
+                f"3. **FORBIDDEN topics**: {forbidden_topics}.\n"
+                f"4. **Goal**: Surface concerns, signal red lines, and probe others' priorities. Do NOT propose a full solution yet.\n"
+            )
+        else:
+             speech_constraints = (
+                f"[Round {round_no} Guidance]\n"
+                f"You can now be more specific with numbers and conditions if trust allows.\n"
+            )
+
+        # --- NEW: Spatial Grounding (Mandatory) ---
+        spatial_examples = ", ".join(random.sample(SPATIAL_GROUNDING_EXAMPLES, min(3, len(SPATIAL_GROUNDING_EXAMPLES))))
+        spatial_instruction = (
+            f"**Spatial Grounding (MANDATORY)**: You must refer to the physical reality of the site at least once in your response.\n"
+            f"   (e.g., mention construction noise, views, shadows, walking paths, specific buildings). Examples: {spatial_examples}.\n"
+        )
+
+        # --- NEW: 50/50 Conflict Dimension Logic ---
+        # 50% chance to respond to previous speaker directly, 50% to pivot to a new conflict dimension
+        pivot_instruction = ""
+        if random.random() < 0.5:
+             pivot_instruction = "**Strategy**: Directly respond to the previous speaker's point. Agree, disagree, or qualify it based on your interests."
+        else:
+             pivot_instruction = "**Strategy**: Acknowledge the previous point briefly, then **PIVOT** to a new, specific conflict dimension relevant to your role (e.g., 'That's fine, but who pays for the maintenance?', 'If we do that, what happens to the park?')."
+
         system_prompt = (
             f"[System]\n"
-            f"You are interacting in a high-stakes urban planning simulation called 'Ripple Effect'.\n"
-            f"Do not break character. Do not be polite unless your character is polite.\n\n"
+            f"You are a player in 'Ripple Effect', a high-stakes urban negotiation game. \n"
+            f"**IMPORTANT**: You are NOT a policy writer, a lawyer, or a checklist machine. You are a HUMAN character with specific interests and fears.\n"
+            f"Your goal is to win influence and protect your interests through negotiation, pressure, and alliances.\n\n"
+            
             f"[Character Profile]\n"
             f"- Role: {ai['name']} ({ROLES.get(ai['role_id'], {}).get('name')})\n"
             f"- Core Objective: {role_objective}\n"
             f"- Backstory: {persona['bio']}\n"
             f"- Deepest Fear (Pain Point): {persona['pain_point']}\n\n"
+            
+            f"{speech_constraints}\n\n"
+            
             f"[Speaking Style Guidelines]\n"
-            f"- Description: {style_desc}\n"
-            f"- Syntax/Grammar: {style_grammar}\n"
-            f"- Key Vocabulary: {style_keywords}\n\n"
+            f"- Voice: {style_desc}\n"
+            f"- Keywords: {style_keywords}\n"
+            f"- Tone: {emotion}\n"
+            f"- Do NOT use templated phrases like 'I understand your point' or 'Let's consider'. Speak naturally.\n\n"
+            
             f"[Contextual Awareness]\n"
             f"{masterplan_context}\n"
-            f"2. **The Table (Negotiation State)**:\n"
-            f"   - Current Deal: {issues_summary.replace(chr(10), ', ')}\n"
-            f"   - Current Stance Score: {current_score}/100 ({emotion})\n"
-            f"   - Trust Level: {emotion}\n\n"
+            f"Current Deal Status: {issues_summary.replace(chr(10), ', ')}\n"
+            f"Role Stance on {zid}: {stance_guidance}\n\n"
+            
             f"[Task]\n"
-            f"1. **Think First**: Analyze the player's proposal. Is it a distraction? Does it hurt your objective?\n"
-            f"2. **Select Strategy**: If trust is low, be skeptical. If high, be collaborative but demanding.\n"
-            f"3. **Draft Response**: Use your Style. MUST reference a specific Plot ID if relevant.\n\n"
+            f"1. {pivot_instruction}\n"
+            f"2. {spatial_instruction}\n"
+            f"3. Keep it short (under 50 words). conversational, and 'human'.\n"
+            f"4. **NO LISTS**. Do not use bullet points. Speak in full sentences.\n\n"
+            
             f"[Output Format - JSON]\n"
             f"Return a JSON object with keys: 'thought_process', 'dialogue', 'score_delta' (integer -10 to 10), 'animation_trigger' (optional string)."
         )
@@ -981,35 +1612,97 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
             continue
 
         try:
-            print(f"  [System] Sending JSON request to OpenAI for {ai['name']}...")
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini", # Switched to 4o-mini for speed/cost/availability
-                messages=[
+            attempt = 0
+            last_errors = []
+            ai_dialogue = '...'
+            thought_process = ''
+            score_change = 0
+            ai_response_json = {}  # Initialize with empty dict to prevent UnboundLocalError/AttributeError
+
+            while attempt < 2:
+                print(f"  [System] Sending JSON request to OpenAI for {ai['name']}... (attempt {attempt + 1})")
+                messages = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Dialogue History:\n{history_text}\n\nPlayer says: \"{player_statement}\""}
-                ],
-                max_tokens=250,
-                temperature=0.9,
-                response_format={"type": "json_object"}
-            )
-            
-            ai_response_json = json.loads(completion.choices[0].message.content)
-            
-            # --- 4. PARSE JSON RESPONSE ---
-            ai_dialogue = ai_response_json.get('dialogue', '...')
-            thought_process = ai_response_json.get('thought_process', '')
-            score_change = int(ai_response_json.get('score_delta', 0))
-            
+                    {"role": "user", "content": f"Dialogue History:\n{history_text}\n\nPlayer says: \"{player_statement}\""},
+                ]
+                if attempt == 1 and last_errors:
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "Rewrite your response to satisfy the Round Focus guidance. "
+                            f"Fix these failures: {', '.join(last_errors)}. "
+                            "You must include at least one numeric hard fact keyword from the Zone Context, "
+                            "and you must not drift into other zones unless the player asks."
+                        )
+                    })
+
+                # Attempt 1: Try with the requested advanced model (gpt-5-mini)
+                try:
+                    completion = client.chat.completions.create(
+                        model="gpt-5-mini",
+                        messages=messages,
+                        max_completion_tokens=2500,  # Increased for reasoning models
+                        # response_format={"type": "json_object"} # Removed: Not supported by some reasoning models
+                    )
+                    choice = completion.choices[0]
+                    print(f"  [Debug] gpt-5-mini finish_reason: {choice.finish_reason}, refusal: {getattr(choice.message, 'refusal', 'None')}")
+                    raw_content = (choice.message.content or '').strip()
+                except Exception as e:
+                    print(f"  [Warning] gpt-5-mini failed ({e}). Falling back to gpt-4o-mini...")
+                    raw_content = ''
+
+                # Fallback: If empty or failed, try standard model
+                if not raw_content:
+                    print("  [Warning] Primary model returned empty content. Trying fallback...")
+                    try:
+                        completion = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=messages,
+                            max_tokens=1000,
+                            response_format={"type": "json_object"}
+                        )
+                        raw_content = (completion.choices[0].message.content or '').strip()
+                    except Exception as e_fallback:
+                        print(f"  [Error] Fallback model also failed: {e_fallback}")
+
+                ai_response_json = _try_parse_json_object(raw_content)
+                if not isinstance(ai_response_json, dict):
+                    print(f"  [Error] Invalid JSON from {ai['name']}. Raw content:\n'{raw_content}'")
+                    # Instead of raising immediately, treat as error for retry
+                    last_errors = ["Returned invalid JSON"]
+                    attempt += 1
+                    continue
+
+                # --- 4. PARSE JSON RESPONSE ---
+                ai_dialogue = ai_response_json.get('dialogue', '...')
+                thought_process = ai_response_json.get('thought_process', '')
+                score_change = int(ai_response_json.get('score_delta', 0))
+
+                last_errors = validate_ai_dialogue(
+                    dialogue=ai_dialogue,
+                    role_id=ai.get('role_id'),
+                    zone_id=zid,
+                    zone_info=zone_info,
+                    role_voice_keywords=ROLE_VOICE_KEYWORDS,
+                    require_zone_id=False,
+                    require_role_voice=False,
+                    require_question_by_role=False,
+                )
+                if not last_errors:
+                    break
+
+                attempt += 1
+
             # Apply sensitivity from global ROLES
             sensitivity = ROLES.get(ai['role_id'], {}).get('ai_response_sensitivity', 1.0)
             score_change = int(score_change * sensitivity)
-            
+
             # Clamp score
             new_score = max(0, min(100, current_score + score_change))
-            
+
             print(f"  -> {ai['name']} Thought: {thought_process}")
             print(f"  -> {ai['name']} Says: \"{ai_dialogue[:50]}...\" (Score: {score_change})")
-            
+
             responses_data[ai['id']] = {
                 'response': ai_dialogue,
                 'new_score': new_score,
@@ -1020,9 +1713,7 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
 
         except Exception as e:
             print(f"  Error generating response for {ai['name']}: {e}")
-            # Return the error as the response so we can see it in the UI
-            error_msg = f"[System Error]: {str(e)}"
-            responses_data[ai['id']] = {'response': error_msg, 'new_score': current_score, 'score_change': 0}
+            responses_data[ai['id']] = {'response': '...', 'new_score': current_score, 'score_change': 0}
 
     return responses_data
 
@@ -1091,13 +1782,26 @@ def regenerate_tokens_for_round(session_data):
     
     # Check for regen penalty
     regen_penalty = session_data.get('regen_penalty', False)
+    constraint_regen_penalty = session_data.get('token_regen_delta', 0) # From Constraint Layer
+
     if regen_penalty:
         player_regen = 1
         session_data['regen_penalty'] = False # Reset after applying
-        print("  Player penalized: +1 token this round.")
+        print("  Player penalized: +1 token this round (Action Penalty).")
     else:
         player_regen = 2
     
+    # Apply Constraint Layer Penalty (additive)
+    # constraint_regen_penalty is usually negative, e.g., -1
+    player_regen += constraint_regen_penalty
+    if constraint_regen_penalty != 0:
+        print(f"  Player penalized by Constraint Layer: {constraint_regen_penalty} tokens.")
+        # Reset constraint penalty (assuming it's per-round impact or persisted in constraint state if permanent)
+        # For now, we reset the delta stored in session, as the constraint layer re-applies it if condition persists
+        session_data.pop('token_regen_delta', None)
+
+    player_regen = max(0, player_regen) # Ensure non-negative logic
+
     npc_regen = 1
 
     for char in characters:
@@ -1209,6 +1913,7 @@ def generate_ai_opponents(player_role_id):
                 'stance_score': chosen_initial_score,
                 'stance': get_stance_category(chosen_initial_score),
                 'influence_tokens': role_data['initial_influence_tokens'],
+                'starting_influence_tokens': role_data['initial_influence_tokens'],
                 'max_tokens': 8, # NPC max tokens
                 'trust_value': role_data.get('initial_trust', INITIAL_TRUST),
                 'age': random.choice([28, 35, 42, 45, 53, 58, 62, 67]),
@@ -1416,15 +2121,36 @@ def interpret_command_with_ai(command, client, entities):
     - Clarification JSON: {{"action": "clarify", "message": "What specific dimensions should I set for [entity_id]?"}}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": command}
-        ],
-        response_format={"type": "json_object"}
-    )
-    return json.loads(response.choices[0].message.content)
+    # Attempt 1: gpt-5-mini
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": command}
+            ],
+            max_completion_tokens=1000,
+            # response_format={"type": "json_object"} # Removed for compatibility
+        )
+        content = response.choices[0].message.content
+    except Exception as e:
+        print(f"  [Warning] interpret_command gpt-5-mini failed ({e}). Falling back...")
+        content = None
+
+    # Fallback: gpt-4o-mini
+    if not content:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": command}
+            ],
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
+
+    return json.loads(content)
 
 @app.route('/update-plan', methods=['POST'])
 def update_plan():
@@ -1627,15 +2353,806 @@ def get_3d_layer(layer_name):
 @app.route('/api/masterplan')
 def get_masterplan_data():
     """Serves the masterplan semantic data (Plot mappings)."""
-    # Now served directly from backend memory (Single Source of Truth)
-    return jsonify(MASTERPLAN_DATA)
+    # Reload from disk to ensure freshness (Development Mode)
+    # This prevents stale data if the JSON is edited while server runs
+    try:
+        data = load_scenario_data(os.path.join('scenarios', 'masterplan.json'))
+        return jsonify(data)
+    except Exception as e:
+        print(f"Error reloading masterplan: {e}")
+        # Fallback to the globally loaded one if disk read fails
+        return jsonify(MASTERPLAN_DATA)
 
 @app.route('/game')
 def game():
     """Unified two-column interface for negotiation + visualization."""
     return render_template('integrated_view.html')
 
+
+# --- Multiplayer Room Routes ---
+
+import socket
+
+def get_local_ip():
+    try:
+        # Connect to an external server (doesn't send data) to get the interface IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "127.0.0.1"
+
+@app.route('/room_gate')
+def room_gate():
+    host_ip = get_local_ip()
+    return render_template('room_gate.html', host_ip=host_ip, port=5006)
+
+
+@app.route('/lobby/<room_id>')
+def lobby(room_id):
+    room_id = (room_id or '').upper()
+    if not room_id or room_id not in ROOMS:
+        flash('Room not found.', 'error')
+        return redirect(url_for('room_gate'))
+    return render_template('lobby.html', room_id=room_id, player_id=session.get('player_id'))
+
+
+@app.route('/api/config')
+def api_config():
+    # M1: Everyone can be a host in cloud version (create room = host)
+    return jsonify({'isHost': True})
+
+
+@app.route('/api/rooms', methods=['POST'])
+def create_room():
+    # M1: Limit total rooms
+    if len(ROOMS) >= MAX_ROOMS_TOTAL:
+        return jsonify({'error': 'Server at capacity (max rooms reached).'}), 503
+
+    payload = request.get_json(silent=True) or {}
+    room_id = uuid.uuid4().hex[:6].upper()
+    
+    # M1: Creator is Host
+    player_id = session.get('player_id')
+    if not player_id:
+        player_id = f"player_{uuid.uuid4().hex[:8]}"
+        session['player_id'] = player_id
+
+    ROOMS[room_id] = {
+        'id': room_id,
+        'createdAt': time.time(),
+        'phase': 'lobby',
+        'config': {
+            'maxHumans': int(payload.get('maxHumans', 4)),
+            'aiCount': int(payload.get('aiCount', 2)),
+            'chapterId': payload.get('chapterId', 1)
+        },
+        'hostId': player_id,
+        'players': [],
+        'game_state': None
+    }
+    
+    # M2: Log Event
+    log_event(room_id, player_id, 'ROOM_CREATED', payload=payload)
+    
+    return jsonify({'roomId': room_id})
+
+
+@app.route('/api/rooms/<room_id>/join', methods=['POST'])
+def join_room_api(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'ok': False, 'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'lobby':
+        return jsonify({'ok': False, 'error': 'Room already started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_name = (payload.get('playerName') or '').strip() or 'Player'
+
+    if len(room.get('players', [])) >= int(room.get('config', {}).get('maxHumans', 4)):
+        return jsonify({'ok': False, 'error': 'Room is full.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if player_id:
+        existing = next((p for p in room['players'] if p.get('id') == player_id), None)
+        if existing:
+            # M3: Re-hydrate session for persistent identity
+            session['room_id'] = room_id
+            session['player_id'] = player_id
+            
+            # M3: Ensure hostId isn't lost if this was the host rejoining
+            if room.get('hostId') == player_id:
+                 # Logic ensures they remain host
+                 pass
+                 
+            return jsonify({'ok': True, 'playerId': player_id})
+
+    if not player_id:
+        player_id = f"player_{uuid.uuid4().hex[:8]}"
+    
+    session['player_id'] = player_id
+    session['room_id'] = room_id
+
+    room['players'].append({'id': player_id, 'name': player_name, 'role': None})
+    
+    # Assign host to the first player if not set (removes strict IP check for robustness)
+    if room.get('hostId') is None:
+        room['hostId'] = player_id
+
+    # M2: Log Event
+    log_event(room_id, player_id, 'PLAYER_JOINED', payload={'name': player_name})
+
+    try:
+        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    except Exception:
+        pass
+
+    return jsonify({'ok': True, 'playerId': player_id})
+
+
+@app.route('/api/rooms/<room_id>/state')
+def get_room_state(room_id):
+    room_id = (room_id or '').upper()
+    if room_id not in ROOMS:
+        return jsonify({'error': 'Room not found.'}), 404
+    return jsonify(_get_public_room_state(room_id))
+
+
+@app.route('/api/rooms/<room_id>/select_role', methods=['POST'])
+def select_role(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'lobby':
+        return jsonify({'error': 'Room already started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    role_id = payload.get('role')
+    if not role_id:
+        return jsonify({'error': 'Missing role.'}), 400
+
+    if role_id not in ROLES and role_id not in ONBOARDING_DATA:
+        return jsonify({'error': 'Invalid role.'}), 400
+
+    # Allow 2 residents, 1 of everyone else
+    existing_count = sum(1 for p in room.get('players', []) if p.get('role') == role_id)
+    limit = 2 if role_id == 'resident_homeowner' else 1
+    
+    if existing_count >= limit:
+        return jsonify({'error': 'Role already taken.'}), 400
+
+    me = next((p for p in room['players'] if p.get('id') == player_id), None)
+    if not me:
+        return jsonify({'error': 'Player not found.'}), 404
+    me['role'] = role_id
+
+    # M2: Log Event
+    log_event(room_id, player_id, 'ROLE_SELECTED', payload={'role': role_id}, role=role_id)
+
+    socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    return jsonify({'ok': True})
+
+
+def _build_room_game_state(room):
+    players = room.get('players', [])
+    
+    # Fixed 7 slots configuration
+    ALL_SLOTS = [
+        'council_planner', 
+        'developer', 
+        'community_activist', 
+        'resident_homeowner', 
+        'resident_homeowner',
+        'urban_designer', 
+        'potential_buyer'
+    ]
+    
+    available_slots = list(ALL_SLOTS)
+
+    characters = []
+    for p in players:
+        role_id = p.get('role')
+        if not role_id:
+            continue
+
+        # Remove one instance of this role from available slots
+        if role_id in available_slots:
+            available_slots.remove(role_id)
+            
+        data = ONBOARDING_DATA.get(role_id)
+        start_tokens = int((data or {}).get('tokens', 5))
+        characters.append({
+            'role_id': role_id,
+            'role_name': (data or {}).get('role_name', role_id),
+            'portrait': (data or {}).get('portrait', None),
+            'local_resident': False,
+            'age': None,
+            'has_children': False,
+            'backstory': '',
+            'influence_tokens': start_tokens,
+            'starting_influence_tokens': start_tokens,
+            'max_tokens': 12,
+            'stance_score': 50,
+            'initial_stance': 'Support',
+            'trust_value': 50,
+            'influence': INFLUENCE_SCORES.get(role_id, 2),
+            'id': p.get('id'),
+            'is_player': True,
+            'name': p.get('name', 'Player')
+        })
+
+    ai_count = int(room.get('config', {}).get('aiCount', 0))
+    ai_id_counter = 0
+    
+    # Fill remaining slots with AI up to ai_count
+    for i in range(ai_count):
+        if not available_slots:
+            break
+            
+        role_id = available_slots.pop(0)
+        
+        # Try to get data from ROLES (Scenario Data) first, then ONBOARDING_DATA
+        role_data = ROLES.get(role_id) or {}
+        onboarding_role_data = ONBOARDING_DATA.get(role_id) or {}
+        
+        start_tokens = int(role_data.get('initial_influence_tokens', 5))
+        if not role_data and onboarding_role_data:
+             start_tokens = int(onboarding_role_data.get('tokens', 5))
+
+        role_name = role_data.get('name', onboarding_role_data.get('role_name', role_id))
+        description = role_data.get('description', onboarding_role_data.get('description', ''))
+        trust = role_data.get('initial_trust', INITIAL_TRUST)
+
+        ai_profile = {
+            'id': f"ai_room_{ai_id_counter}",
+            'role_id': role_id,
+            'role_name': role_name,
+            'name': random.choice(SAMPLE_NAMES),
+            'is_player': False,
+            'influence': INFLUENCE_SCORES.get(role_id, 1),
+            'initial_stance': STANCES['neutral'],
+            'stance_score': INITIAL_NEUTRAL_SCORE,
+            'stance': get_stance_category(INITIAL_NEUTRAL_SCORE),
+            'influence_tokens': start_tokens,
+            'starting_influence_tokens': start_tokens,
+            'max_tokens': 8,
+            'trust_value': trust,
+            'polarization_score': 0,
+            'previous_stance_category': get_stance_category(INITIAL_NEUTRAL_SCORE),
+            'backstory': description
+        }
+        characters.append(ai_profile)
+        ai_id_counter += 1
+
+    host_id = room.get('hostId')
+    def _sort_key(c):
+        return (
+            int(c.get('starting_influence_tokens', c.get('influence_tokens', 0)) or 0),
+            str(c.get('role_id') or ''),
+            str(c.get('id') or ''),
+        )
+
+    sorted_all = sorted([c for c in characters if c.get('id')], key=_sort_key)
+    turn_order_base = [c.get('id') for c in sorted_all if c.get('id')]
+
+    # Round 1: host always speaks first (forced), then others by ascending starting tokens (excluding host)
+    if host_id and host_id in turn_order_base:
+        sorted_others = [sid for sid in turn_order_base if sid != host_id]
+        turn_order_round1 = [host_id] + sorted_others
+    else:
+        turn_order_round1 = turn_order_base
+
+    # Effective turn order starts as round1 order; after round1 finishes, we switch to base order
+    turn_order = list(turn_order_round1)
+
+    default_c_state = ConstraintState()
+
+    negotiation_state = {
+        'round': 1,
+        'history': [],
+        'history_meta': [],
+        'outcome': None,
+        'negotiation_climate': 50,
+        'active_zone_id': 'GLOBAL',
+        'active_issue_tag': compute_issue_tag('GLOBAL'),
+        'issues': {
+            'affordable_share': 35,
+            'cultural_venue_scale': 'medium',
+            'housing_location_mix': 'balanced'
+        },
+        'constraint_state': state_to_dict(default_c_state),
+        'constraint_last': {},
+        'current_round_dialogue': {},
+        'current_round_meta': {},
+    }
+
+    return {
+        'negotiation_state': negotiation_state,
+        'characters': characters,
+        'turn_order': turn_order,
+        'turn_order_base': turn_order_base,
+        'turn_order_round1': turn_order_round1,
+        'turn_index': 0,
+        'current_speaker': turn_order[0] if turn_order else None
+    }
+
+
+def _is_ai_speaker(speaker_id, characters):
+    if not speaker_id:
+        return False
+    char = next((c for c in characters if c.get('id') == speaker_id), None)
+    return bool(char) and not char.get('is_player')
+
+
+def _advance_turn_state(game_state):
+    """Advance turn_index/current_speaker; if a round completes, commit dialogue to history and increment round.
+
+    Special rule: After Round 1 completes, switch from turn_order_round1 to turn_order_base.
+    """
+    negotiation_state = game_state.get('negotiation_state', {})
+    turn_order = game_state.get('turn_order', []) or []
+    turn_index = int(game_state.get('turn_index', 0) or 0)
+
+    turn_index += 1
+
+    # Round complete
+    if turn_order and turn_index >= len(turn_order):
+        current_round_dialogue = negotiation_state.get('current_round_dialogue', {}) or {}
+        current_round_meta = negotiation_state.get('current_round_meta', {}) or {}
+        negotiation_state.setdefault('history', []).append(current_round_dialogue)
+        negotiation_state.setdefault('history_meta', []).append(current_round_meta)
+        negotiation_state['current_round_dialogue'] = {}
+        negotiation_state['current_round_meta'] = {}
+        negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+
+        # After Round 1 ends, switch to base order (host is no longer forced first)
+        if int(negotiation_state.get('round', 1)) == 2:
+            base = game_state.get('turn_order_base')
+            if base:
+                game_state['turn_order'] = list(base)
+                turn_order = game_state['turn_order']
+
+        turn_index = 0
+
+    game_state['turn_index'] = turn_index
+    game_state['current_speaker'] = turn_order[turn_index] if turn_order and turn_index < len(turn_order) else None
+    return game_state
+
+
+def _auto_play_ai_chain(room_id, room, max_steps=None):
+    """If current speaker is AI, auto-generate AI messages and advance until a human turn.
+
+    Safety: stops after max_steps to prevent infinite loops.
+    """
+    game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    characters = game_state.get('characters') or []
+
+    if max_steps is None:
+        max_steps = max(3, len(game_state.get('turn_order', []) or []))
+
+    history = negotiation_state.get('history', []) or []
+    issues = negotiation_state.get('issues', {}) or {}
+    climate = negotiation_state.get('negotiation_climate', 50)
+    zid = negotiation_state.get('active_zone_id') or 'GLOBAL'
+
+    # Seed context with latest message if available
+    last_text = ''
+    current_round_dialogue = negotiation_state.get('current_round_dialogue', {}) or {}
+    if current_round_dialogue:
+        # get last inserted speaker deterministically
+        try:
+            last_key = list(current_round_dialogue.keys())[-1]
+            last_text = str(current_round_dialogue.get(last_key) or '')
+        except Exception:
+            last_text = ''
+    elif history:
+        last_round = history[-1] or {}
+        try:
+            last_key = list(last_round.keys())[-1]
+            last_text = str(last_round.get(last_key) or '')
+        except Exception:
+            last_text = ''
+
+    steps = 0
+    while steps < max_steps:
+        speaker_id = game_state.get('current_speaker')
+        if not _is_ai_speaker(speaker_id, characters):
+            break
+
+        prompt_history = history
+        if negotiation_state.get('current_round_dialogue'):
+            prompt_history = history + [negotiation_state.get('current_round_dialogue')]
+
+        responses = get_ai_responses(
+            characters,
+            prompt_history,
+            last_text,
+            climate,
+            issues,
+            only_ai_id=speaker_id,
+            active_zone_id=zid,
+            current_round=negotiation_state.get('round', 1),
+        )
+        ai_text = (responses.get(speaker_id) or {}).get('response')
+        if not ai_text:
+            ai_text = '...'
+
+        # Add AI message to current round dialogue
+        negotiation_state.setdefault('current_round_dialogue', {})
+        negotiation_state['current_round_dialogue'][speaker_id] = ai_text
+
+        negotiation_state.setdefault('current_round_meta', {})
+        ai_char = next((c for c in characters if c.get('id') == speaker_id), {})
+        negotiation_state['current_round_meta'][speaker_id] = {
+            'zone_id': zid,
+            'issue_tag': compute_issue_tag(zid),
+            'role_id': (ai_char or {}).get('role_id'),
+        }
+
+        last_text = ai_text
+
+        # Advance
+        _advance_turn_state(game_state)
+        steps += 1
+
+    room['game_state'] = game_state
+    return
+
+
+@app.route('/api/rooms/<room_id>/start', methods=['POST'])
+def start_room(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    if room.get('hostId') != player_id:
+        return jsonify({'error': 'Only host can start.'}), 403
+
+    if room.get('phase') != 'lobby':
+        return jsonify({'ok': True})
+
+    if not all(p.get('role') for p in room.get('players', [])):
+        return jsonify({'error': 'All players must select a role.'}), 400
+
+    room['game_state'] = _build_room_game_state(room)
+    room['phase'] = 'inGame'
+
+    # M2: Log Event
+    log_event(room_id, player_id, 'GAME_STARTED', payload={'config': room.get('config')})
+
+    socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    socketio.emit('game_start', {'url': url_for('negotiation')}, room=room_id)
+    return jsonify({'ok': True})
+
+
+@socketio.on('join_room_socket')
+def join_room_socket(data):
+    room_id = ((data or {}).get('roomId') or '').upper()
+    if not room_id:
+        return
+    join_room(room_id)
+    if room_id in ROOMS:
+        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+
+
+@app.route('/api/rooms/<room_id>/send', methods=['POST'])
+def send_message(room_id):
+    """Send a message in the negotiation. Only current speaker can send."""
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    text = payload.get('text', '').strip()
+
+    if not player_id:
+        return jsonify({'error': 'Player ID required.'}), 400
+
+    if not text:
+        return jsonify({'error': 'Message text required.'}), 400
+
+    game_state = room.get('game_state', {})
+    current_speaker = game_state.get('current_speaker')
+
+    # Enforce turn order: only current speaker can send
+    if player_id != current_speaker:
+        return jsonify({'error': 'Not your turn.', 'currentSpeaker': current_speaker}), 403
+
+    negotiation_state = game_state.get('negotiation_state', {})
+    negotiation_state.setdefault('current_round_dialogue', {})
+    negotiation_state['current_round_dialogue'][player_id] = text
+
+    zid = infer_active_zone_id(text, negotiation_state.get('active_zone_id') or 'GLOBAL')
+    negotiation_state['active_zone_id'] = zid
+    negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
+    negotiation_state.setdefault('current_round_meta', {})
+    me = next((c for c in (game_state.get('characters') or []) if c.get('id') == player_id), {})
+    negotiation_state['current_round_meta'][player_id] = {
+        'zone_id': zid,
+        'issue_tag': negotiation_state.get('active_issue_tag'),
+        'role_id': (me or {}).get('role_id'),
+    }
+
+    # M2: Log Event
+    log_event(
+        room_id, 
+        player_id, 
+        'MESSAGE_SENT', 
+        payload={'text': text, 'zone': zid}, 
+        role=(me or {}).get('role_id'), 
+        round_idx=negotiation_state.get('round'), 
+        turn_idx=game_state.get('turn_index')
+    )
+
+    _advance_turn_state(game_state)
+
+    # Auto-play AI turns until next human (or safety limit)
+    _auto_play_ai_chain(room_id, room)
+
+    # Broadcast update to all clients in the room
+    socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+
+    return jsonify({
+        'ok': True,
+        'turnIndex': game_state.get('turn_index', 0),
+        'currentSpeaker': game_state.get('current_speaker'),
+        'roundIndex': negotiation_state.get('round', 1)
+    })
+
+
+@app.route('/api/rooms/<room_id>/advance_turn', methods=['POST'])
+def advance_turn(room_id):
+    """Host-only: force advance to next speaker without sending a message."""
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    if room.get('hostId') != player_id:
+        return jsonify({'error': 'Only host can advance turn.'}), 403
+
+    game_state = room.get('game_state', {})
+    negotiation_state = game_state.get('negotiation_state', {})
+
+    # M2: Log Event
+    log_event(room_id, player_id, 'TURN_FORCED_ADVANCE', round_idx=negotiation_state.get('round'), turn_idx=game_state.get('turn_index'))
+
+    _advance_turn_state(game_state)
+    _auto_play_ai_chain(room_id, room)
+
+    socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    return jsonify({
+        'ok': True,
+        'turnIndex': game_state.get('turn_index', 0),
+        'currentSpeaker': game_state.get('current_speaker'),
+        'roundIndex': negotiation_state.get('round', 1)
+    })
+
+
+@app.route('/api/rooms/<room_id>/end_round', methods=['POST'])
+def end_round(room_id):
+    """Host-only: force end current round and move to next round."""
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    if room.get('hostId') != player_id:
+        return jsonify({'error': 'Only host can end round.'}), 403
+
+    game_state = room.get('game_state', {})
+    negotiation_state = game_state.get('negotiation_state', {})
+
+    # M2: Log Event
+    log_event(room_id, player_id, 'ROUND_FORCED_END', round_idx=negotiation_state.get('round'))
+
+    # Commit current round dialogue to history and move to next round
+    negotiation_state.setdefault('history', []).append(negotiation_state.get('current_round_dialogue', {}) or {})
+    negotiation_state.setdefault('history_meta', []).append(negotiation_state.get('current_round_meta', {}) or {})
+    negotiation_state['current_round_dialogue'] = {}
+    negotiation_state['current_round_meta'] = {}
+    negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+
+    # After Round 1 ends, switch to base order (host is no longer forced first)
+    if int(negotiation_state.get('round', 1)) == 2:
+        base = game_state.get('turn_order_base')
+        if base:
+            game_state['turn_order'] = list(base)
+
+    turn_order = game_state.get('turn_order', []) or []
+    game_state['turn_index'] = 0
+    game_state['current_speaker'] = turn_order[0] if turn_order else None
+
+    _auto_play_ai_chain(room_id, room)
+
+    socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    return jsonify({
+        'ok': True,
+        'turnIndex': game_state.get('turn_index', 0),
+        'currentSpeaker': game_state.get('current_speaker'),
+        'roundIndex': negotiation_state.get('round', 1)
+    })
+
+
+# --- M2: Data Export APIs ---
+
+@app.route('/api/export/rooms')
+def export_rooms():
+    """List all rooms with basic stats."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+
+    conn, db_type = get_db_connection()
+    try:
+        # Get room stats from DB
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT room_id, count(*) as event_count, min(ts) as start_time, max(ts) as last_update 
+                    FROM events GROUP BY room_id
+                """)
+                rows = cur.fetchall()
+        else:
+             rows = conn.execute("""
+                SELECT room_id, count(*) as event_count, min(ts) as start_time, max(ts) as last_update 
+                FROM events GROUP BY room_id
+            """).fetchall()
+        
+        stats = {row['room_id']: dict(row) for row in rows}
+    except Exception as e:
+        print(f"Export Error: {e}")
+        stats = {}
+    finally:
+        conn.close()
+
+    # Merge with active memory rooms
+    data = []
+    all_ids = set(ROOMS.keys()) | set(stats.keys())
+    
+    for rid in all_ids:
+        mem_room = ROOMS.get(rid, {})
+        db_stat = stats.get(rid, {})
+        
+        data.append({
+            'roomId': rid,
+            'active': rid in ROOMS,
+            'phase': mem_room.get('phase', 'archived'),
+            'playerCount': len(mem_room.get('players', [])) if rid in ROOMS else 0,
+            'eventCount': db_stat.get('event_count', 0),
+            'startTime': db_stat.get('start_time'),
+            'lastUpdate': db_stat.get('last_update')
+        })
+    
+    return jsonify(data)
+
+@app.route('/api/export/room/<room_id>/events')
+def export_room_events(room_id):
+    """Export raw events for a room."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+         
+    conn, db_type = get_db_connection()
+    try:
+        query = "SELECT * FROM events WHERE room_id = %s ORDER BY ts ASC" if db_type == 'postgres' else "SELECT * FROM events WHERE room_id = ? ORDER BY ts ASC"
+        params = (room_id,)
+        
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+                events = [dict(row) for row in rows]
+        else:
+             rows = conn.execute(query, params).fetchall()
+             events = [dict(row) for row in rows]
+             
+        # Parse payload_json
+        for e in events:
+            if e.get('payload_json'):
+                try:
+                    e['payload'] = json.loads(e['payload_json'])
+                except:
+                    e['payload'] = {}
+            del e['payload_json']
+            
+        return jsonify(events)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/export/room/<room_id>/transcript')
+def export_room_transcript(room_id):
+    """Export readable transcript."""
+    if not session.get('authenticated'):
+         return jsonify({'error': 'Unauthorized'}), 401
+
+    conn, db_type = get_db_connection()
+    try:
+        query = "SELECT * FROM events WHERE room_id = %s AND event_type = 'MESSAGE_SENT' ORDER BY ts ASC" if db_type == 'postgres' else "SELECT * FROM events WHERE room_id = ? AND event_type = 'MESSAGE_SENT' ORDER BY ts ASC"
+        params = (room_id,)
+        
+        if db_type == 'postgres':
+             with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+        else:
+             rows = conn.execute(query, params).fetchall()
+        
+        transcript = []
+        for row in rows:
+            payload = {}
+            try:
+                payload = json.loads(row['payload_json'])
+            except:
+                pass
+            
+            transcript.append({
+                'ts': row['ts'],
+                'role': row['role'],
+                'text': payload.get('text', ''),
+                'zone': payload.get('zone', ''),
+                'round': row['round_index']
+            })
+            
+        return jsonify(transcript)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
 if __name__ == '__main__':
     # Make sure to create a .env file with your OPENAI_API_KEY
     # Example: OPENAI_API_KEY='sk-...'    
-    app.run(debug=True, port=5006)
+    ssl_cert = os.environ.get('SSL_CERT_FILE')
+    ssl_key = os.environ.get('SSL_KEY_FILE')
+    run_kwargs = {
+        'debug': True,
+        'host': '0.0.0.0',
+        'port': 5006,
+        'allow_unsafe_werkzeug': True,
+    }
+    if ssl_cert and ssl_key:
+        run_kwargs['ssl_context'] = (ssl_cert, ssl_key)
+    socketio.run(app, **run_kwargs)
+

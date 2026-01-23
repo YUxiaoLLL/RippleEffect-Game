@@ -160,3 +160,54 @@ ROLE_MAPPING = {
         "default_flexibility": [4, 8]
     }
 }
+
+# --- G. AI RESPONSE ENGINE V1.0 CONFIGURATION ---
+
+# 1. Role x Speech Depth Constraints (Round 1)
+ROLE_SPEECH_CONSTRAINTS = {
+    "community_activist": {
+        "allowed": ["lived_experience", "moral_pressure", "collective_risk"],
+        "forbidden": ["legal_mechanism", "numeric_thresholds", "financial_structuring"]
+    },
+    "resident_homeowner": {
+        "allowed": ["precedent_risk", "neighbourhood_change", "trust_concern"],
+        "forbidden": ["formulas", "governance_models", "complex_legal_jargon"]
+    },
+    "potential_buyer": {
+        "allowed": ["delivery_risk", "confidence_conditions", "sequencing_concern"],
+        "forbidden": ["moralising", "enforcement_language", "social_justice_rhetoric"]
+    },
+    "urban_designer": {
+        "allowed": ["spatial_logic", "phasing_logic", "lived_environment"],
+        "forbidden": ["income_caps", "allocation_ratios", "financial_models"]
+    },
+    "council_planner": {
+        "allowed": ["policy_alignment", "ambiguity_flagging", "precedent_warning"],
+        "forbidden": ["exact_numbers_in_round1", "enforcement_math", "promise_of_funding"]
+    },
+    "developer": {
+        "allowed": ["viability_concern", "timeline_risk", "market_confidence"],
+        "forbidden": ["public_sector_bureaucracy", "social_engineering", "giving_away_profit_too_early"]
+    }
+}
+
+# 2. Numeric Policy
+NUMERIC_POLICY = {
+    "global_numbers": {
+        "affordable_homes": 79,
+        "council_forward_purchase": 18000000
+    },
+    "round_1_visibility": {
+        "explicit": False,
+        "implicit_reference": "allowed"
+    }
+}
+
+# 3. Spatial Grounding Examples
+SPATIAL_GROUNDING_EXAMPLES = [
+    "construction_phase (e.g. 'living next to a building site')",
+    "adjacency (e.g. 'what happens to the park next door')",
+    "daily_routine (e.g. 'walking my kids to school past this')",
+    "noise_visibility (e.g. 'overshadowing my garden')",
+    "access_sequence (e.g. 'who gets to enter first')"
+]

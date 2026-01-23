@@ -98,10 +98,20 @@
         .close-btn:hover {
             background: #dcbba0;
         }
+
+        /* Onboarding Overlay Animation */
+        @keyframes fadeOutDelay {
+            0%, 85% { opacity: 1; pointer-events: auto; }
+            100% { opacity: 0; pointer-events: none; }
+        }
+        .animate-onboarding {
+            animation: fadeOutDelay 4s forwards;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
     
+
     <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl">
         
         <!-- Help Icon -->
@@ -239,6 +249,18 @@
             </svg>
         </a>
 
+        <!-- Onboarding Overlay (Bottom) -->
+        <div id="onboarding-overlay" class="absolute bottom-[40px] left-0 w-full flex justify-center z-50 pointer-events-none transition-opacity duration-1000">
+             <div class="bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl max-w-[340px] text-center">
+                <p class="font-inter font-bold text-[#F2E6C2] text-[16px] mb-2">
+                    Choose who you will speak as in this conflict.
+                </p>
+                <p class="font-inter text-white/90 text-[14px] leading-relaxed">
+                    Each role has different goals, power, and risks.
+                </p>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -263,6 +285,14 @@
                 }
             };
         }
+
+        // Auto Fade Out Overlay
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const overlay = document.getElementById('onboarding-overlay');
+                if (overlay) overlay.style.opacity = '0';
+            }, 3500);
+        });
     </script>
 </body>
 </html>

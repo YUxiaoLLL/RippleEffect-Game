@@ -12,6 +12,15 @@
         .font-inter { font-family: 'Inter', sans-serif; }
         .font-righteous { font-family: 'Righteous', cursive; }
 
+        /* Onboarding Overlay Animation */
+        @keyframes fadeOutDelay {
+            0%, 85% { opacity: 1; pointer-events: auto; }
+            100% { opacity: 0; pointer-events: none; }
+        }
+        .animate-onboarding {
+            animation: fadeOutDelay 4s forwards;
+        }
+
         /* Help System Styles */
         .help-icon {
             position: absolute;
@@ -252,6 +261,14 @@
 
         </form>
 
+        <!-- Onboarding Overlay (Bottom) -->
+        <div id="onboarding-overlay" class="absolute bottom-0 left-0 w-full flex justify-center z-50 pointer-events-none transition-opacity duration-1000">
+             <div class="bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl max-w-[340px] text-center">
+                <p class="font-inter text-white/90 text-[16px] leading-relaxed tracking-wide">
+                    You are generating your own specified profile
+                </p>
+            </div>
+        </div>
 
     </div>
 
@@ -288,7 +305,14 @@
                 }
             };
         }
-    </script>
 
+        // Auto Fade Out Overlay
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const overlay = document.getElementById('onboarding-overlay');
+                if (overlay) overlay.style.opacity = '0';
+            }, 3500);
+        });
+    </script>
 </body>
 </html>

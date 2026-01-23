@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Room Gate</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Righteous&display=swap" rel="stylesheet">
+    <style>
+        .font-righteous { font-family: 'Righteous', cursive; }
+        .font-inter { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
+
+    <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl flex flex-col items-center justify-center gap-8 p-6">
+        
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="font-righteous text-[#F2E6C2] text-[32px] mb-2">Multiplayer</h1>
+            <p class="font-inter text-white/70 text-[14px]">Join or create a room to start.</p>
+        </div>
+
+        <!-- Create Room Section -->
+        <div id="create-section" class="w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 opacity-50 pointer-events-none transition-all duration-300">
+            <div class="flex justify-between items-center">
+                <h2 class="font-righteous text-[#D97B48] text-[20px]">Host Game</h2>
+                <span id="host-badge" class="hidden text-[10px] bg-[#D97B48] text-white px-2 py-0.5 rounded-full font-inter">YOU ARE HOST</span>
+            </div>
+            
+            <div class="flex flex-col gap-2">
+                <label class="font-inter text-white/70 text-[12px]">Number of Humans</label>
+                <div class="grid grid-cols-6 gap-1">
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all" onclick="updateConfig('maxHumans', 2)">2</button>
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all" onclick="updateConfig('maxHumans', 3)">3</button>
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all ring-2 ring-[#D97B48]" onclick="updateConfig('maxHumans', 4)">4</button>
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all" onclick="updateConfig('maxHumans', 5)">5</button>
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all" onclick="updateConfig('maxHumans', 6)">6</button>
+                    <button class="bg-black/30 border border-white/20 text-white py-2 rounded-lg hover:bg-white/10 transition-all" onclick="updateConfig('maxHumans', 7)">7</button>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <div class="flex justify-between">
+                    <label class="font-inter text-white/70 text-[12px]">AI Agents (Auto-calculated)</label>
+                    <span id="ai-count-display" class="font-inter text-[#D97B48] text-[12px] font-bold">2</span>
+                </div>
+                <div class="w-full bg-black/30 rounded-full h-2 overflow-hidden">
+                    <div id="ai-progress" class="bg-[#D97B48] h-full transition-all duration-300" style="width: 33%"></div>
+                </div>
+                <p class="text-[10px] text-white/30 font-inter text-center mt-1">Total Players: 7 (Fixed)</p>
+            </div>
+
+            <button id="create-btn" class="w-full bg-[#D97B48] text-white font-righteous py-3 rounded-xl shadow-lg hover:bg-[#c56a3d] transition-colors" onclick="createRoom()">
+                CREATE ROOM
+            </button>
+            
+            <!-- Connection Info -->
+            <div class="mt-2 p-3 bg-black/20 rounded-lg border border-white/5">
+                <p class="text-[10px] text-white/50 text-center mb-1">Invite others via link:</p>
+                <p id="share-link" class="text-[12px] text-[#D97B48] font-mono text-center select-all cursor-pointer" onclick="copyShareLink()">Loading...</p>
+            </div>
+        </div>
+
+        <!-- Join Room Section -->
+        <div class="w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
+            <h2 class="font-righteous text-[#8b659c] text-[20px]">Join Room</h2>
+            
+            <input type="text" id="player-name" placeholder="Your Name" class="w-full bg-black/30 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#8b659c] font-inter">
+            
+            <div class="flex gap-2">
+                <input type="text" id="room-id" placeholder="Room ID" class="flex-1 bg-black/30 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#8b659c] font-inter uppercase tracking-widest">
+                <button class="bg-[#8b659c] text-white font-righteous px-6 rounded-xl shadow-lg hover:bg-[#7a578a] transition-colors" onclick="joinRoom()">
+                    JOIN
+                </button>
+            </div>
+            
+            <!-- Rejoin Button (Hidden by default) -->
+            <button id="rejoin-btn" class="hidden w-full bg-white/10 border border-white/10 text-white/70 font-inter text-[12px] py-2 rounded-lg hover:bg-white/20 transition-all" onclick="rejoinLastGame()">
+                Rejoin Last Game
+            </button>
+            
+            <p id="error-msg" class="text-red-400 text-[12px] font-inter text-center min-h-[18px]"></p>
+        </div>
+
+        <!-- Single Player Option -->
+        <a href="{{ url_for('role_selection') }}" class="w-full max-w-[340px] border border-white/20 rounded-xl py-3 text-center text-white/70 font-inter hover:bg-white/5 hover:text-white transition-colors">
+            Play Single Player
+        </a>
+
+        <!-- Back Button -->
+        <a href="{{ url_for('chapter_selection') }}" class="text-white/50 text-[14px] font-inter hover:text-white">Back to Chapter Selection</a>
+
+    </div>
+
+    <script>
+        let config = { maxHumans: 4, aiCount: 3, chapterId: 1 };
+        const TOTAL_PLAYERS = 7;
+
+        async function init() {
+            // Update Share Link
+            const shareLink = `${window.location.origin}/room_gate`;
+            document.getElementById('share-link').innerText = shareLink;
+
+            // Check for previous session
+            checkRejoin();
+
+            try {
+                const res = await fetch('/api/config');
+                const data = await res.json();
+                if (data.isHost) {
+                    const section = document.getElementById('create-section');
+                    section.classList.remove('opacity-50', 'pointer-events-none');
+                    document.getElementById('host-badge').classList.remove('hidden');
+                    updateUI();
+                }
+            } catch (e) {
+                console.error("Failed to load config", e);
+            }
+        }
+
+        function checkRejoin() {
+            const lastRoom = localStorage.getItem('ripple_room_id');
+            const lastPlayerId = localStorage.getItem('ripple_player_id');
+            if (lastRoom && lastPlayerId) {
+                const btn = document.getElementById('rejoin-btn');
+                btn.innerText = `Rejoin Room ${lastRoom}`;
+                btn.classList.remove('hidden');
+            }
+        }
+
+        async function rejoinLastGame() {
+            const lastRoom = localStorage.getItem('ripple_room_id');
+            const lastName = localStorage.getItem('ripple_player_name') || 'Player';
+            if (lastRoom) {
+                await joinRoomById(lastRoom, lastName);
+            }
+        }
+
+        function updateConfig(key, value) {
+            if (key === 'maxHumans') {
+                config.maxHumans = value;
+                config.aiCount = TOTAL_PLAYERS - value;
+                updateUI();
+            }
+        }
+        
+        function updateUI() {
+            // Update Human Buttons
+            const buttons = document.querySelectorAll('[onclick^="updateConfig(\'maxHumans\'"]');
+            buttons.forEach(btn => {
+                const val = parseInt(btn.innerText);
+                if (val === config.maxHumans) {
+                    btn.classList.add('ring-2', 'ring-[#D97B48]');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-[#D97B48]');
+                }
+            });
+
+            // Update AI Display
+            document.getElementById('ai-count-display').innerText = config.aiCount;
+            const percentage = (config.aiCount / TOTAL_PLAYERS) * 100;
+            document.getElementById('ai-progress').style.width = percentage + '%';
+        }
+
+        async function createRoom() {
+            const btn = document.getElementById('create-btn');
+            btn.disabled = true;
+            btn.innerText = "CREATING...";
+            
+            try {
+                const res = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (data.roomId) {
+                    // Host automatically joins
+                    // Use stored name or default Host
+                    const storedName = localStorage.getItem('ripple_player_name');
+                    await joinRoomById(data.roomId, storedName || "Host");
+                } else {
+                    showError(data.error || "Failed to create room");
+                    btn.disabled = false;
+                    btn.innerText = "CREATE ROOM";
+                }
+            } catch (e) {
+                showError("Network error");
+                btn.disabled = false;
+                btn.innerText = "CREATE ROOM";
+            }
+        }
+
+        async function joinRoom() {
+            const roomId = document.getElementById('room-id').value.trim();
+            const playerName = document.getElementById('player-name').value.trim();
+            
+            if (!roomId) return showError("Enter Room ID");
+            if (!playerName) return showError("Enter Name");
+            
+            // Save name preference
+            localStorage.setItem('ripple_player_name', playerName);
+            
+            await joinRoomById(roomId, playerName);
+        }
+
+        async function joinRoomById(roomId, playerName) {
+            // Get stored ID to attempt reconnection
+            const storedPlayerId = localStorage.getItem('ripple_player_id');
+
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        playerName: playerName,
+                        playerId: storedPlayerId // Try to claim existing identity
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.ok) {
+                    // Save identity
+                    if (data.playerId) {
+                        localStorage.setItem('ripple_player_id', data.playerId);
+                        localStorage.setItem('ripple_room_id', roomId);
+                    }
+                    window.location.href = `/lobby/${roomId}`;
+                } else {
+                    showError(data.error || "Failed to join");
+                }
+            } catch (e) {
+                showError("Network error: " + e.message);
+            }
+        }
+
+        function copyShareLink() {
+             const text = document.getElementById('share-link').innerText;
+             navigator.clipboard.writeText(text);
+             alert("Link copied!");
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.innerText = msg;
+            setTimeout(() => el.innerText = "", 3000);
+        }
+
+        init();
+    </script>
+</body>
+</html>

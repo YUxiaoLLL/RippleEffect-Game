@@ -16,6 +16,15 @@
         .toggle-content { transition: opacity 0.3s ease-in-out; }
         .hidden-content { opacity: 0; pointer-events: none; position: absolute; }
 
+        /* Onboarding Overlay Animation */
+        @keyframes fadeOutDelay {
+            0%, 85% { opacity: 1; pointer-events: auto; }
+            100% { opacity: 0; pointer-events: none; }
+        }
+        .animate-onboarding {
+            animation: fadeOutDelay 4s forwards;
+        }
+
         /* Help System Styles */
         .help-icon {
             position: absolute;
@@ -288,9 +297,38 @@
              </div>
         </a>
 
+        <!-- Onboarding Overlay (Pointing to Tokens) -->
+        <div id="onboarding-overlay" class="absolute bottom-[100px] left-0 w-full flex flex-col items-center z-50 pointer-events-none transition-opacity duration-1000">
+             <div class="bg-black/60 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl max-w-[320px] text-center mb-2">
+                <p class="font-inter font-bold text-[#F2E6C2] text-[14px] mb-1">
+                    This is the power you start with.
+                </p>
+                <p class="font-inter text-white/90 text-[12px] leading-relaxed mb-1">
+                    You will use influence tokens to persuade, pressure, and form alliances.
+                </p>
+                <p class="font-inter text-[#ff9999] text-[12px] font-medium">
+                    If you run out of influence, your voice will fade.
+                </p>
+            </div>
+            <!-- Down Arrow -->
+            <div class="animate-bounce">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F2E6C2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14M19 12l-7 7-7 7"/>
+                </svg>
+            </div>
+        </div>
+
     </div>
 
     <script>
+        // Auto Fade Out Overlay
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const overlay = document.getElementById('onboarding-overlay');
+                if (overlay) overlay.style.opacity = '0';
+            }, 3500);
+        });
+
         let isProfile = true;
         const indicator = document.getElementById('toggleIndicator');
         const profileView = document.getElementById('profileView');

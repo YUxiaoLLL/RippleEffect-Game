@@ -1,0 +1,164 @@
+{
+  "meta": {
+    "project": "Ripple Effect - Canada Water",
+    "chapterId": "venue_renewal",
+    "version": "v0.1",
+    "notes": [
+      "LLM generation must mention >=1 numeric fact from active zone_facts.",
+      "Each zone has function tags + objectives + constraints to prevent generic replies."
+    ]
+  },
+  "zones": {
+    "A1": {
+      "zone_id": "A1",
+      "label": "Plot A1",
+      "category": "mixed_use",
+      "function_tags": [
+        "workspace",
+        "retail_fnb",
+        "residential_tower",
+        "housing_delivery",
+        "jobs"
+      ],
+      "hard_facts": {
+        "workspace_sqft": 118000,
+        "eating_drinking_shopping_sqft": 10000,
+        "residential_tower_storys": 35,
+        "homes_count": 186
+      },
+      "goals": [
+        "Deliver workspace/jobs without overwhelming local amenity and movement capacity",
+        "Make ground floor retail/F&B feel public-facing not gated",
+        "Ensure residential delivery is not framed as a ‘bonus’ but tied to access/amenity commitments"
+      ],
+      "typical_issues": [
+        "Footfall + noise spillover",
+        "Affordability/tenure mix debate",
+        "Construction disruption + phasing",
+        "Public realm permeability and edges"
+      ],
+      "discussion_prompts": [
+        "How should A1 balance workspace delivery with residential impact?",
+        "What commitments should be attached to 118k sqft workspace to benefit locals?"
+      ],
+      "must_mention_keywords": [
+        "118,000",
+        "118000",
+        "186",
+        "35",
+        "10,000",
+        "10000",
+        "summer 2024"
+      ]
+    },
+    "A2": {
+      "zone_id": "A2",
+      "label": "Plot A2",
+      "category": "mixed_use",
+      "function_tags": [
+        "workspace",
+        "retail_fnb",
+        "leisure_centre",
+        "public_service",
+        "jobs"
+      ],
+      "hard_facts": {
+        "workspace_sqft": 182000,
+        "eating_drinking_shopping_sqft": 10000,
+        "leisure_centre_sqft": 55000
+      },
+      "goals": [
+        "Make leisure centre a truly public asset (access, pricing, hours)",
+        "Use workspace scale to justify local training / hiring commitments",
+        "Ensure A2’s mix reduces conflict rather than concentrating it"
+      ],
+      "typical_issues": [
+        "Leisure centre pricing/access equity",
+        "Peak-time congestion (school hours / weekends)",
+        "Noise + night-time economy concerns",
+        "Safety and crowd management"
+      ],
+      "discussion_prompts": [
+        "Who gets access to the 55k sqft leisure centre and under what rules?",
+        "How should 182k sqft workspace translate into local benefit commitments?"
+      ],
+      "must_mention_keywords": [
+        "182,000",
+        "182000",
+        "55,000",
+        "55000",
+        "10,000",
+        "10000",
+        "summer 2024"
+      ]
+    },
+    "K1": {
+      "zone_id": "K1",
+      "label": "Plot K1",
+      "category": "housing_affordable",
+      "function_tags": [
+        "affordable_housing",
+        "council_purchase",
+        "allocation_rules",
+        "tenure_security"
+      ],
+      "hard_facts": {
+        "affordable_homes_count": 79,
+        "council_forward_purchase_gbp_m": 18
+      },
+      "goals": [
+        "Protect affordability long-term (not only at handover)",
+        "Make allocation transparent and locally trusted",
+        "Prevent displacement narratives by publishing clear safeguards"
+      ],
+      "typical_issues": [
+        "Who qualifies for the 79 homes (priority rules)?",
+        "Affordability definition + rent escalation",
+        "Management/maintenance responsibilities",
+        "Perceived fairness and community trust"
+      ],
+      "discussion_prompts": [
+        "What allocation and eligibility rules ensure the 79 homes benefit locals?",
+        "How should the £18m council purchase be communicated to build trust?"
+      ],
+      "must_mention_keywords": [
+        "79",
+        "£18m",
+        "18m",
+        "18 million",
+        "18,000,000"
+      ]
+    },
+    "GLOBAL": {
+      "zone_id": "GLOBAL",
+      "label": "Whole District",
+      "category": "system",
+      "function_tags": [
+        "mobility",
+        "public_realm",
+        "safety",
+        "climate",
+        "economy",
+        "ecology"
+      ],
+      "hard_facts": {
+        "note": "Use when debate is about cross-zone trade-offs rather than one plot."
+      },
+      "goals": [
+        "Keep debate anchored to measurable trade-offs",
+        "Avoid drifting into abstract statements without commitments"
+      ],
+      "typical_issues": [
+        "Traffic + walkability",
+        "Construction phasing conflict between plots",
+        "Equity of benefit distribution",
+        "Governance and enforcement"
+      ],
+      "discussion_prompts": [
+        "Which constraint is binding this round: climate/economic/ecological pressure?",
+        "What minimum commitments apply to all plots?"
+      ],
+      "must_mention_keywords": []
+    }
+  }
+}
