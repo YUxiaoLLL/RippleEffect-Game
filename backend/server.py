@@ -1,6 +1,11 @@
 import eventlet
 eventlet.monkey_patch()
 
+import sys
+import os
+# Fix for Render/Gunicorn: Ensure backend directory is in sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from flask import Flask, render_template, Response, request, jsonify, session, send_from_directory, redirect, url_for, flash, make_response
 import uuid
 import time
