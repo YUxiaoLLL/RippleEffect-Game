@@ -2912,6 +2912,23 @@ def handle_scene_update(data):
     # For now, broadcast to all, client can filter by 'playerId' if needed.
     socketio.emit('scene_object_updated', data, room=room_id)
 
+    # M4: Log 3D Event for Persistence
+    try:
+        player_id = data.get('playerId')
+        game_state = room.get('game_state') or {}
+        negotiation_state = game_state.get('negotiation_state') or {}
+        
+        log_event(
+            room_id, 
+            player_id, 
+            'SCENE_UPDATE', 
+            payload={'objectId': obj_id, 'transform': transform},
+            round_idx=negotiation_state.get('round'),
+            turn_idx=game_state.get('turn_index')
+        )
+    except Exception as e:
+        print(f"Error logging scene update: {e}")
+
 
 @app.route('/api/rooms/<room_id>/send', methods=['POST'])
 def send_message(room_id):
