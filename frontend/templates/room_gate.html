@@ -13,6 +13,11 @@
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
 
+    <!-- Admin Reset (Fixed Screen Top-Right) -->
+    <button onclick="resetServer()" class="fixed top-6 right-6 z-[9999] text-[12px] font-bold text-red-500 font-inter border-2 border-red-500 px-3 py-2 rounded-lg hover:bg-red-500/20 transition-all bg-black/80 backdrop-blur-md shadow-red-900/20 shadow-lg cursor-pointer">
+        [ADMIN] RESET ALL
+    </button>
+
     <div class="relative w-[430px] h-[932px] bg-[#202020] overflow-hidden shadow-2xl flex flex-col items-center justify-center gap-8 p-6">
         
         <!-- Header -->
@@ -88,7 +93,6 @@
             Play Single Player
         </a>
 
-        <!-- Back Button -->
         <a href="{{ url_for('chapter_selection') }}" class="text-white/50 text-[14px] font-inter hover:text-white">Back to Chapter Selection</a>
 
     </div>
