@@ -2434,11 +2434,7 @@ def create_room():
         'players': [],
         'phase': 'lobby',
         'config': config,
-        'game_state': {}, # Stores turn order, history, etc.
-        'scene_state': {  # Stores 3D object deltas
-            'objects': {}, # { 'mesh_id': { position: {x,y,z}, rotation: {...}, scale: {...} } }
-            'last_modified': time.time()
-        }
+        'game_state': {} # Stores turn order, history, etc.
     }
     
     # M2: Log Event (Fix: Use host_id instead of undefined player_id)
@@ -2875,6 +2871,46 @@ def join_room_socket(data):
     join_room(room_id)
     if room_id in ROOMS:
         socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+
+
+# --- 3D Synchronization ---
+@socketio.on('update_scene_object')
+def handle_scene_update(data):
+    """
+    Handle real-time 3D object updates.
+    data = {
+        'roomId': '...',
+        'objectId': '...',
+        'transform': { 'position': {...}, 'rotation': {...}, 'scale': {...} },
+        'playerId': '...'
+    }
+    """
+    room_id = (data.get('roomId') or '').upper()
+    if room_id not in ROOMS:
+        return
+
+    obj_id = data.get('objectId')
+    transform = data.get('transform')
+    
+    if not obj_id or not transform:
+        return
+
+    room = ROOMS[room_id]
+    
+    # Init scene_state if missing (for existing rooms)
+    if 'scene_state' not in room:
+        room['scene_state'] = {'objects': {}, 'last_modified': time.time()}
+
+    # Update state
+    room['scene_state']['objects'][obj_id] = transform
+    room['scene_state']['last_modified'] = time.time()
+
+    # Broadcast to others in the room
+    # include_self=False is implicit if we use 'broadcast=True' but 'room=...' targets everyone usually
+    # We want to echo back or let client handle optimism. 
+    # Usually client updates locally first, so we might want to skip sender if possible.
+    # For now, broadcast to all, client can filter by 'playerId' if needed.
+    socketio.emit('scene_object_updated', data, room=room_id)
 
 
 @app.route('/api/rooms/<room_id>/send', methods=['POST'])

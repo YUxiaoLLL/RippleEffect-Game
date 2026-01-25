@@ -106,7 +106,7 @@
     <div id="3dPanel" class="relative mx-4 mt-2 h-[35vh] bg-neutral-100 rounded-[30px] overflow-hidden shadow-inner border border-gray-200 z-10">
         <div class="absolute inset-0" id="three-container">
             <iframe 
-                src="/3d/" 
+                src="" 
                 class="w-full h-full border-0"
                 id="threeFrame"
             ></iframe>
@@ -233,21 +233,6 @@ async function initializeNegotiation() {
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
-            
-            // Initialize 3D View with Context
-            const iframe = document.getElementById('threeFrame');
-            const fullscreenFrame = document.getElementById('fullscreenFrame');
-            // Check if we have roomId and playerId in state
-            if (state.roomId) {
-                const src = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=embedded`;
-                if (iframe) iframe.src = src;
-                if (fullscreenFrame) fullscreenFrame.src = src;
-            } else {
-                 // Fallback
-                 if (iframe) iframe.src = "/3d/";
-                 if (fullscreenFrame) fullscreenFrame.src = "/3d/";
-            }
-
             renderUI();
         }
     } catch (error) {
