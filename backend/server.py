@@ -2420,26 +2420,21 @@ def create_room():
         return jsonify({'error': 'Server at capacity (max rooms reached).'}), 503
 
     payload = request.get_json(silent=True) or {}
+    host_id = payload.get('hostId')
+    
+    # Generate short readable room ID (6 chars)
     room_id = uuid.uuid4().hex[:6].upper()
     
-    # M1: Creator is Host
-    player_id = session.get('player_id')
-    if not player_id:
-        player_id = f"player_{uuid.uuid4().hex[:8]}"
-        session['player_id'] = player_id
-
+    config = payload.get('config', {})
+    
     ROOMS[room_id] = {
         'id': room_id,
         'createdAt': time.time(),
-        'phase': 'lobby',
-        'config': {
-            'maxHumans': int(payload.get('maxHumans', 4)),
-            'aiCount': int(payload.get('aiCount', 2)),
-            'chapterId': payload.get('chapterId', 1)
-        },
-        'hostId': player_id,
+        'hostId': host_id,
         'players': [],
-        'game_state': None
+        'phase': 'lobby',
+        'config': config,
+        'game_state': {} # Stores turn order, history, etc.
     }
     
     # M2: Log Event
