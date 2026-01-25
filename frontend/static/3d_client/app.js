@@ -1086,14 +1086,18 @@ renderer.domElement.addEventListener('mouseup', onMouseUp, false);
 // --- Zone Indicators (v0) ---
 let zoneIndicators = {}; // { 'A1': mesh, 'A2': mesh, ... }
 let indicatorGroup = new THREE.Group();
-scene.add(indicatorGroup);
+cityGroup.add(indicatorGroup); // Fix: Add to cityGroup to match building coordinates
 
 function calculateZoneCenters() {
+    console.log("[3D] Calculating Zone Centers...");
     // Calculate centers for A1, A2, K1 based on masterplanData
     const zones = ['A1', 'A2', 'K1'];
     
     zones.forEach(zone => {
-        if (!masterplanData[zone] || !masterplanData[zone].ids) return;
+        if (!masterplanData[zone] || !masterplanData[zone].ids) {
+            console.warn(`[3D] Zone ${zone} data missing`);
+            return;
+        }
         
         const ids = masterplanData[zone].ids;
         let sumX = 0, sumZ = 0, count = 0;
@@ -1113,7 +1117,11 @@ function calculateZoneCenters() {
         });
         
         if (count > 0) {
-            createZoneArrow(zone, new THREE.Vector3(sumX / count, 60, sumZ / count));
+            const center = new THREE.Vector3(sumX / count, 120, sumZ / count); // Increased height to 120
+            console.log(`[3D] Created Arrow for ${zone} at`, center);
+            createZoneArrow(zone, center);
+        } else {
+            console.warn(`[3D] No buildings found for zone ${zone}`);
         }
     });
 }
@@ -1125,17 +1133,20 @@ function createZoneArrow(label, position) {
     const col = label === 'A1' ? 0xF97316 : label === 'A2' ? 0x3B82F6 : 0x22C55E; // Orange, Blue, Green
     const mat = new THREE.MeshBasicMaterial({ color: col });
     
-    const bodyGeo = new THREE.CylinderGeometry(2, 2, 10, 8);
+    const bodyGeo = new THREE.CylinderGeometry(4, 4, 20, 8); // Doubled size
     const body = new THREE.Mesh(bodyGeo, mat);
-    body.position.y = 5;
+    body.position.y = 10;
     group.add(body);
     
     // 2. Arrow Head (Cone)
-    const headGeo = new THREE.ConeGeometry(5, 8, 8);
+    const headGeo = new THREE.ConeGeometry(10, 16, 8); // Doubled size
     const head = new THREE.Mesh(headGeo, mat);
     head.rotation.x = Math.PI; // Point down
-    head.position.y = -2;
+    head.position.y = -5;
     group.add(head);
+    
+    // 3. Floating Label (Simple Plane)
+    // Optional: Add a sprite text later if needed
     
     group.position.copy(position);
     group.visible = true; // v0: Visible by default
@@ -1145,18 +1156,23 @@ function createZoneArrow(label, position) {
 }
 
 function toggleZoneIndicator(zone) {
-    // Highlight selected, keep others normal
-    Object.values(zoneIndicators).forEach(mesh => mesh.scale.set(1,1,1));
+    // Highlight selected, keep others visible but smaller
+    Object.values(zoneIndicators).forEach(mesh => {
+        mesh.scale.set(1, 1, 1);
+        mesh.children.forEach(c => c.material.opacity = 0.5); // Dim others
+    });
+    
     if (zone && zoneIndicators[zone]) {
         zoneIndicators[zone].scale.set(1.5, 1.5, 1.5);
+        zoneIndicators[zone].children.forEach(c => c.material.opacity = 1.0); // Brighten selected
     }
 }
 
 function animateIndicators(time) {
-    const bounce = Math.sin(time * 5) * 5; // +/- 5 units
+    const bounce = Math.sin(time * 5) * 10; // +/- 10 units
     Object.values(zoneIndicators).forEach(mesh => {
         if (mesh.visible) {
-            mesh.position.y = 60 + bounce;
+            mesh.position.y = 120 + bounce; // Base height 120
             mesh.rotation.y += 0.02;
         }
     });
