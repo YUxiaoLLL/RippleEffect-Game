@@ -233,6 +233,21 @@ async function initializeNegotiation() {
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
+            
+            // Initialize 3D View with Context
+            const iframe = document.getElementById('threeFrame');
+            const fullscreenFrame = document.getElementById('fullscreenFrame');
+            // Check if we have roomId and playerId in state
+            if (state.roomId) {
+                const src = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=embedded`;
+                if (iframe) iframe.src = src;
+                if (fullscreenFrame) fullscreenFrame.src = src;
+            } else {
+                 // Fallback
+                 if (iframe) iframe.src = "/3d/";
+                 if (fullscreenFrame) fullscreenFrame.src = "/3d/";
+            }
+
             renderUI();
         }
     } catch (error) {

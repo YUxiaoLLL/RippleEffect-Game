@@ -2434,7 +2434,11 @@ def create_room():
         'players': [],
         'phase': 'lobby',
         'config': config,
-        'game_state': {} # Stores turn order, history, etc.
+        'game_state': {}, # Stores turn order, history, etc.
+        'scene_state': {  # Stores 3D object deltas
+            'objects': {}, # { 'mesh_id': { position: {x,y,z}, rotation: {...}, scale: {...} } }
+            'last_modified': time.time()
+        }
     }
     
     # M2: Log Event (Fix: Use host_id instead of undefined player_id)

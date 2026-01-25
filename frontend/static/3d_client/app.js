@@ -281,10 +281,78 @@ if (pauseButton) {
 }
 scene.add(transformControls);
 
+// --- Socket.IO Sync (Multiplayer) ---
+const urlParams = new URLSearchParams(window.location.search);
+const roomId = urlParams.get('roomId');
+const playerId = urlParams.get('playerId');
+let socket = null;
+
+if (window.io && roomId) {
+    console.log(`[3D Sync] Connecting to room ${roomId}...`);
+    socket = window.io({
+        query: { roomId, playerId }
+    });
+
+    socket.on('connect', () => {
+        console.log('[3D Sync] Connected!');
+        socket.emit('join_room_socket', { roomId });
+    });
+
+    socket.on('scene_object_updated', (data) => {
+        if (data.playerId === playerId) return; // Skip own updates
+
+        console.log('[3D Sync] Remote update:', data);
+        // Find mesh by FID (OS ID) or internal ID
+        const mesh = buildings.find(b => {
+            const fid = b.userData.fid || String(b.userData.id);
+            return fid === data.objectId;
+        });
+
+        if (mesh) {
+            if (data.transform.position) mesh.position.copy(data.transform.position);
+            if (data.transform.scale) mesh.scale.copy(data.transform.scale);
+            if (data.transform.rotation) {
+                mesh.rotation.set(
+                    data.transform.rotation.x,
+                    data.transform.rotation.y,
+                    data.transform.rotation.z
+                );
+            }
+            mesh.updateMatrix();
+            // Re-compute bounding box if needed, or visual updates
+        }
+    });
+}
+
+function emitObjectUpdate(mesh) {
+    if (!socket || !roomId) return;
+    
+    const id = mesh.userData.fid || String(mesh.userData.id);
+    const transform = {
+        position: mesh.position,
+        scale: mesh.scale,
+        rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z }
+    };
+
+    socket.emit('update_scene_object', {
+        roomId,
+        playerId,
+        objectId: id,
+        transform
+    });
+}
+
 transformControls.addEventListener('dragging-changed', e => {
   controls.enabled = !e.value;
-  if (e.value && selectedBuilding) {
-    pushHistory();
+  
+  if (e.value) {
+      // Drag Start
+      if (selectedBuilding) pushHistory();
+  } else {
+      // Drag End
+      if (selectedBuilding) {
+          emitObjectUpdate(selectedBuilding);
+      }
   }
 });
 
