@@ -790,6 +790,9 @@ function loadData() {
       // 3. Initialize UI & Styles (Now safe)
       initLayerUI();
       applyLayerStyles();
+      
+      // v0: Init Indicators
+      calculateZoneCenters();
 
       // 4. Load other layers (async, non-blocking)
       const layers = [
