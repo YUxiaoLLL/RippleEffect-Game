@@ -433,12 +433,8 @@ ONBOARDING_DATA = {
     "council_planner": {
         "theme": "light",
         "role_name": "Councilor",
-        "description": "You are a publicly elected policymaker, navigating the tension between growth and equity. With pressure from both developers and constituents, your decisions shape the city's long-term direction.",
-        "tasks": [
-            "Weigh proposals for public interest",
-            "Mediate conflicting goals",
-            "Cast decisive votes in council meetings"
-        ],
+        "description": "Primary Concern: Final confirmation of 'activation legitimacy'. You must ensure the chosen zone follows due process.",
+        "tasks": ["Weigh proposals", "Mediate conflicts", "Cast decisive votes"],
         "tokens": 7,
         "portrait": "councilor_portrait.png",
         "mirror_portrait": True,
@@ -447,13 +443,8 @@ ONBOARDING_DATA = {
     "resident_homeowner": {
         "theme": "light",
         "role_name": "Resident",
-        "description": "You are part of the existing community with deep ties to the area. You care about identity, affordability, and everyday livability.",
-        "tasks": [
-            "Express concerns about livability and loss",
-            "Assess proposals against neighbourhood values",
-            "Propose alternatives that reflect the community's needs",
-            "Gain trust from councilors"
-        ],
+        "description": "Primary Concern: Which zone activation disturbs daily life the least? You want to minimize noise and disruption.",
+        "tasks": ["Express concerns", "Protect livability", "Propose alternatives"],
         "tokens": 4,
         "portrait": "resident_portrait.png",
         "mirror_portrait": True,
@@ -462,13 +453,8 @@ ONBOARDING_DATA = {
     "developer": {
         "theme": "dark",
         "role_name": "Developer",
-        "description": "You lead major investments driving Canada Water's redevelopment. Delivering profitable, feasible projects is your priority.",
-        "tasks": [
-            "Optimize plans for cost and return",
-            "Justify profit and trade-offs",
-            "Ensure proposals meet requirements",
-            "Offer concessions to gain favor"
-        ],
+        "description": "Primary Concern: Which zone activation brings maximum early return? You need cash flow to fund the rest.",
+        "tasks": ["Optimize for return", "Justify trade-offs", "Ensure feasibility"],
         "tokens": 8,
         "portrait": "developer_portrait.png",
         "mirror_portrait": False,
@@ -477,12 +463,8 @@ ONBOARDING_DATA = {
     "community_activist": {
         "theme": "light",
         "role_name": "Activist",
-        "description": "You advocate for environmental and social well-being. You challenge plans that overlook sustainability or vulnerable groups.",
-        "tasks": [
-            "Identify environmental or social risks",
-            "Mobilize community awareness",
-            "Promote fair and sustainable alternatives"
-        ],
+        "description": "Primary Concern: Which zone activation poses the greatest risk? You are watching for displacement and environmental damage.",
+        "tasks": ["Identify risks", "Mobilize community", "Demand safeguards"],
         "tokens": 4,
         "portrait": "activist_portrait.png",
         "mirror_portrait": False,
@@ -491,12 +473,8 @@ ONBOARDING_DATA = {
     "potential_buyer": {
         "theme": "light",
         "role_name": "Future Buyer",
-        "description": "You seek a home that fits your lifestyle, budget, and long-term plans. Your choices reflect the lived experience of Canada Water.",
-        "tasks": [
-            "Voice concerns about density and quality of life",
-            "Evaluate proposals for comfort and affordability",
-            "Support options that ensure stable living conditions"
-        ],
+        "description": "Primary Concern: Which zone activation maximizes property value? You want a safe, high-value investment.",
+        "tasks": ["Assess value", "Evaluate quality", "Support stability"],
         "tokens": 3,
         "portrait": "buyer_portrait.png",
         "mirror_portrait": False,
@@ -505,12 +483,8 @@ ONBOARDING_DATA = {
     "urban_designer": {
         "theme": "light",
         "role_name": "Architect",
-        "description": "As an architect, you design spaces that balance creativity, feasibility, and community needs. Your decisions shape how people live and move in Canada Water.",
-        "tasks": [
-            "Translate goals into functional designs",
-            "Balance the needs of different stakeholders",
-            "Collaborate with allies for greater leverage"
-        ],
+        "description": "Primary Concern: Which zone activation maximizes future design potential? You want to unlock the best spatial opportunities.",
+        "tasks": ["Create functionality", "Balance needs", "Design connections"],
         "tokens": 5,
         "portrait": "architect_portrait.png",
         "mirror_portrait": False,

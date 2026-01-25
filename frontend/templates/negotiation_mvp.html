@@ -300,23 +300,31 @@ let state = {
     playerProfile: null,
     climateScore: 50,
     selectedStakeholder: null,
-    is3DExpanded: false
+    is3DExpanded: false,
+    roomId: null,
+    myPlayerId: null,
+    tempStatement: null,
+    selectedIntentZone: null,
+    currentDialogue: {} // Track who spoke this round
 };
 
 // Fetch initial data from Flask backend
 async function initializeNegotiation() {
     try {
-        // In a real implementation, this would fetch from your Flask endpoints
-        // For now, we'll use the session data that's already available
         const response = await fetch('/api/negotiation/state');
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
             
+            // Extract roomId/playerId from URL if not in state
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!state.roomId) state.roomId = urlParams.get('roomId');
+            if (!state.myPlayerId) state.myPlayerId = urlParams.get('playerId') || localStorage.getItem('ripple_player_id');
+
             // Initialize 3D View with Context
             const iframe = document.getElementById('threeFrame');
             const fullscreenFrame = document.getElementById('fullscreenFrame');
-            // Check if we have roomId and playerId in state
+            
             if (state.roomId) {
                 const src = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=embedded`;
                 if (iframe) iframe.src = src;
@@ -331,7 +339,6 @@ async function initializeNegotiation() {
         }
     } catch (error) {
         console.error('Failed to initialize:', error);
-        // Fallback to mock data for demonstration
         initializeMockData();
     }
 }
@@ -344,33 +351,210 @@ function initializeMockData() {
         state.currentRound = {{ state.round | default(1) }};
         state.climateScore = {{ climate_score | default(50) }};
         
-        console.log('Initialized with data:', {
-            stakeholders: state.stakeholders.length,
-            round: state.currentRound,
-            climate: state.climateScore
-        });
-        
         renderUI();
     } catch (error) {
         console.error('Failed to initialize:', error);
-        document.getElementById('chatArea').innerHTML = `
-            <div class="text-center py-8">
-                <p class="text-red-600 font-semibold mb-2">⚠️ Session Error</p>
-                <p class="text-gray-600 text-sm">Please start a new game from the beginning.</p>
-                <a href="/" class="inline-block mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    Go to Role Selection
-                </a>
-            </div>
-        `;
     }
 }
 
 function renderUI() {
     renderImpactBar();
     renderMessages();
+    renderParticipants();
     document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound}`;
 }
 
+// --- v0 Logic: Game Brief & Controls ---
+function closeBrief() {
+    document.getElementById('gameBriefModal').classList.add('hidden');
+    // Show controls hint briefly
+    const hint = document.getElementById('controlsHint');
+    if (hint) {
+        hint.classList.remove('hidden');
+        setTimeout(() => {
+            hint.classList.add('opacity-0');
+            setTimeout(() => hint.classList.add('hidden'), 500);
+        }, 10000); // 10 seconds
+    }
+}
+
+// --- v0 Logic: 3-Step Turn ---
+let turnStep = 1;
+
+function nextStep(step) {
+    if (step === 2) {
+        const input = document.getElementById('messageInput');
+        if (!input.value.trim()) {
+            alert("Please enter a statement first.");
+            return;
+        }
+        state.tempStatement = input.value.trim();
+    }
+    
+    // Update UI visibility
+    document.getElementById(`step${turnStep}UI`).classList.add('hidden');
+    document.getElementById(`step${step}UI`).classList.remove('hidden');
+    
+    // Update Indicators
+    updateStepIndicators(step);
+    turnStep = step;
+}
+
+function updateStepIndicators(current) {
+    for (let i=1; i<=3; i++) {
+        const el = document.getElementById(`step${i}Indicator`);
+        if (!el) continue;
+        
+        if (i === current) {
+            el.className = "w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold transition-colors";
+        } else if (i < current) {
+            el.className = "w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs font-bold transition-colors";
+        } else {
+            el.className = "w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors";
+        }
+    }
+}
+
+function selectZone(zone) {
+    state.selectedIntentZone = zone;
+    
+    // Update Button Styles
+    ['A1', 'A2', 'K1'].forEach(z => {
+        const btn = document.getElementById(`btn-${z}`);
+        if (!btn) return;
+        
+        if (z === zone) {
+            // Active Style
+            btn.className = "zone-btn w-16 py-2 rounded-lg border-2 border-gray-800 bg-gray-800 text-white font-bold text-xs transition-colors";
+        } else {
+            // Inactive Style (Reset to default based on zone)
+            const colors = {
+                'A1': 'border-orange-500 text-orange-600 hover:bg-orange-50',
+                'A2': 'border-blue-500 text-blue-600 hover:bg-blue-50',
+                'K1': 'border-green-500 text-green-600 hover:bg-green-50'
+            };
+            btn.className = `zone-btn w-16 py-2 rounded-lg border-2 ${colors[z]} font-bold text-xs transition-colors`;
+        }
+    });
+    
+    document.getElementById('confirmMarkerBtn').disabled = false;
+    
+    // Update Summary in Step 3
+    document.getElementById('summaryTag').innerText = zone;
+    
+    // Trigger 3D highlight via iframe messaging
+    const iframe = document.getElementById('threeFrame');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zone }, '*');
+    }
+}
+
+async function submitTurn() {
+    if (!state.tempStatement || !state.selectedIntentZone) return;
+    
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+    sendBtn.innerText = "SENDING...";
+
+    const payload = {
+        text: state.tempStatement,
+        intent: state.selectedIntentZone
+    };
+    
+    try {
+        let url = '/negotiation'; 
+        let body = `action=submit_statement&player_statement=${encodeURIComponent(payload.text)}&intent=${payload.intent}`;
+        let headers = { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        };
+        
+        // Multiplayer Logic
+        if (state.roomId) {
+            url = `/api/rooms/${state.roomId}/send`;
+            body = JSON.stringify({
+                playerId: state.myPlayerId,
+                text: payload.text,
+                intent: payload.intent
+            });
+            headers = { 'Content-Type': 'application/json' };
+        }
+
+        const res = await fetch(url, { method: 'POST', headers, body });
+        if (res.ok) {
+            // Reset Step UI
+            turnStep = 1;
+            state.selectedIntentZone = null;
+            state.tempStatement = null;
+            document.getElementById('messageInput').value = '';
+            
+            document.getElementById('step3UI').classList.add('hidden');
+            document.getElementById('step1UI').classList.remove('hidden');
+            updateStepIndicators(1);
+            
+            // Reset buttons
+            selectZone(null); // Clear selection visually
+            document.getElementById('confirmMarkerBtn').disabled = true;
+
+            // Single player response handling
+            if (!state.roomId) {
+                const data = await res.json();
+                if (data.status === 'success') {
+                    state.messages = data.history;
+                    renderUI();
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Submit error", e);
+        alert("Failed to send turn.");
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerText = "SUBMIT";
+    }
+}
+
+// --- v0 Logic: Participant Panel ---
+function renderParticipants() {
+    const list = document.getElementById('participantList');
+    if (!list) return;
+    list.innerHTML = '';
+    
+    // Combine AI and Player
+    const all = [...state.stakeholders];
+    if (state.playerProfile && !all.find(p => p.is_player)) {
+        all.push(state.playerProfile);
+    }
+
+    all.forEach(s => {
+        // Determine if they acted this round
+        // We check state.currentDialogue (needs to be populated from backend)
+        // Or check if they have a message in state.messages for this round?
+        // Simpler: Check state.messages for now
+        // TODO: Backend should send 'acted_participants' list
+        
+        const hasActed = state.messages.some(m => 
+            m.sender !== 'player' && 
+            state.stakeholders.find(st => st.id === m.stakeholderId && st.role_id === s.role_id)
+        ) || (s.is_player && state.messages.some(m => m.sender === 'player'));
+
+        const opacity = hasActed ? 'opacity-100' : 'opacity-40 grayscale';
+        const ring = hasActed ? 'ring-2 ring-green-400' : '';
+        
+        const el = document.createElement('div');
+        el.className = `w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg cursor-pointer transition-all ${opacity} ${ring}`;
+        el.style.backgroundColor = getAvatarColor(s.role_id);
+        el.textContent = getStakeholderEmoji(s.role_id);
+        el.onclick = () => showStakeholderProfile(s.id || 'player');
+        
+        // Tooltip
+        el.title = s.name || s.role_name;
+        
+        list.appendChild(el);
+    });
+}
+
+// --- Rendering Helpers ---
 function renderImpactBar() {
     const topStakeholders = state.stakeholders
         .filter(s => !s.is_player)
@@ -471,7 +655,13 @@ function getStakeholderEmoji(roleId) {
 }
 
 function showStakeholderProfile(stakeholderId) {
-    const stakeholder = state.stakeholders.find(s => s.id === stakeholderId);
+    let stakeholder = null;
+    if (stakeholderId === 'player') {
+        stakeholder = state.playerProfile;
+    } else {
+        stakeholder = state.stakeholders.find(s => s.id === stakeholderId);
+    }
+    
     if (!stakeholder) return;
     
     state.selectedStakeholder = stakeholder;
@@ -492,62 +682,14 @@ function showStakeholderProfile(stakeholderId) {
                     <span class="font-medium text-gray-900 text-right max-w-[200px]">${stakeholder.backstory || 'No description'}</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600">Initial Stance:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.initial_stance}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Influence Score:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.influence}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Gender:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.gender}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Age:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.age}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Local Born:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.local_born}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Stance Score:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.stance_score}</span>
-                </div>
-                <div class="flex justify-between">
                     <span class="text-gray-600">Influence Tokens:</span>
                     <span class="font-medium text-gray-900">${stakeholder.influence_tokens}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Max Tokens:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.max_tokens}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Trust Value:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.trust_value}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Has Children:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.has_children}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Number of Children:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.num_children || 0}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Marital Status:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.marital_status}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Previous Stance Category:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.previous_stance_category || stakeholder.stance}</span>
                 </div>
             </div>
         </div>
     `;
     
-    document.getElementById('profileName').textContent = stakeholder.name;
+    document.getElementById('profileName').textContent = stakeholder.name || "You";
     document.getElementById('profileRole').textContent = stakeholder.role_name;
     const profileAvatar = document.getElementById('profileAvatar');
     profileAvatar.style.backgroundColor = getAvatarColor(stakeholder.role_id);
@@ -581,133 +723,15 @@ document.getElementById('backBtn').addEventListener('click', () => {
     }
 });
 
-// Quick action buttons
-document.querySelectorAll('.action-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        const action = btn.dataset.action;
-        const actionTexts = {
-            'gentle': 'I understand your concerns. Perhaps we could find a middle ground that benefits everyone?',
-            'strong': 'This proposal is crucial for the community\'s future. We need your full support to make it work.',
-            'pressure': 'If we don\'t move forward now, we risk losing this opportunity entirely. The community is counting on us.',
-            'alternative': 'What if we considered a phased approach? This could address your concerns while maintaining momentum.'
-        };
-        
-        document.getElementById('messageInput').value = actionTexts[action];
-        btn.disabled = true;
-        setTimeout(() => btn.disabled = false, 500);
-    });
-});
-
-// Send message
-async function sendMessage() {
-    const input = document.getElementById('messageInput');
-    const message = input.value.trim();
-    
-    if (!message) return;
-    
-    // Add player message immediately
-    state.messages.push({
-        id: Date.now().toString(),
-        sender: 'player',
-        content: message,
-        timestamp: new Date()
-    });
-    
-    input.value = '';
-    renderMessages();
-    
-    // Show thinking indicator
-    const chatArea = document.getElementById('chatArea');
-    const thinkingId = 'thinking-' + Date.now();
-    chatArea.insertAdjacentHTML('beforeend', `
-        <div id="${thinkingId}" class="chat-bubble flex gap-3 mb-4 opacity-50">
-            <div class="avatar-circle flex-shrink-0 w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg">
-                🤖
-            </div>
-            <div class="max-w-[70%]">
-                <div class="text-xs text-gray-500 mb-1 font-medium">AI Agents</div>
-                <div class="px-4 py-3 bg-white rounded-2xl rounded-tl-sm shadow-sm border">
-                    <p class="text-sm text-gray-500 italic">Thinking...</p>
-                </div>
-            </div>
-        </div>
-    `);
-    chatArea.scrollTop = chatArea.scrollHeight;
-    
-    // Send to Flask backend
-    try {
-        const response = await fetch('/negotiation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest' // Signal AJAX request
-            },
-            body: `action=submit_statement&player_statement=${encodeURIComponent(message)}`
-        });
-        
-        // Remove thinking indicator
-        const thinkingEl = document.getElementById(thinkingId);
-        if (thinkingEl) thinkingEl.remove();
-        
-        if (response.ok) {
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                // Update state with new data
-                state.currentRound = data.new_round;
-                state.climateScore = data.climate_score;
-                state.messages = data.history; // Replace history with full synced history
-                
-                // Update UI
-                renderUI();
-                
-                if (data.event_text) {
-                    // Show event toast/notification if needed
-                    alert("Event: " + data.event_text); // Simple fallback, can be improved
-                }
-            } else {
-                console.error('Server returned error:', data);
-            }
-        } else {
-            console.error('Network response was not ok');
-        }
-    } catch (error) {
-        console.error('Failed to send message:', error);
-        // Remove thinking indicator on error
-        const thinkingEl = document.getElementById(thinkingId);
-        if (thinkingEl) thinkingEl.remove();
-    }
-}
-
-document.getElementById('backBtn').addEventListener('click', () => {
-    if (confirm('Are you sure you want to leave the negotiation? Progress will be lost.')) {
-        window.location.href = '/role_selection';
-    }
-});
-
-document.getElementById('sendBtn').addEventListener('click', sendMessage);
 document.getElementById('messageInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
+    if (e.key === 'Enter') {
+        if (turnStep === 1) nextStep(2);
+    }
 });
 
 // Initialize on load
 window.addEventListener('load', () => {
-    // Use the data injected by Jinja2 directly
-    try {
-        state.stakeholders = {{ characters | tojson | safe }};
-        state.playerProfile = {{ player_profile | tojson | safe }};
-        state.currentRound = {{ state.round | default(1) }};
-        state.climateScore = {{ climate_score | default(50) }};
-        
-        // Load existing history if any
-        const rawHistory = {{ state.history | tojson | safe }} || [];
-        // Convert history format to messages format if needed, or rely on backend to provide consistent format on load
-        // For MVP, let's just render UI. Messages might be empty initially.
-        
-        renderUI();
-    } catch (e) {
-        console.error("Error initializing from template data", e);
-    }
+    initializeNegotiation();
 });
 </script>
 
