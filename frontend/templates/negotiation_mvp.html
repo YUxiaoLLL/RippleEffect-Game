@@ -665,9 +665,51 @@ function showStakeholderProfile(stakeholderId) {
     if (!stakeholder) return;
     
     state.selectedStakeholder = stakeholder;
+
+    // v0: Determine Latest Intent
+    let lastIntent = "Waiting for turn...";
+    let intentClass = "text-gray-400 italic";
+    
+    // Search messages for this stakeholder
+    const lastMsg = state.messages.slice().reverse().find(m => {
+        if (stakeholder.is_player) return m.sender === 'player';
+        return m.stakeholderId === stakeholder.id;
+    });
+
+    if (lastMsg && lastMsg.zoneId) {
+        lastIntent = `Supporting ${lastMsg.zoneId}`;
+        const colorMap = { 'A1': 'text-orange-600', 'A2': 'text-blue-600', 'K1': 'text-green-600' };
+        intentClass = `font-bold ${colorMap[lastMsg.zoneId] || 'text-gray-800'}`;
+    }
+
+    // v0: Role Concerns
+    const V0_CONCERNS = {
+        'developer': "Which zone activation brings maximum early return?",
+        'urban_designer': "Which zone activation maximizes future design potential?",
+        'resident_homeowner': "Which zone activation disturbs daily life the least?",
+        'resident_social': "Which zone activation ensures affordable living?",
+        'potential_buyer': "Which zone activation maximizes property value?",
+        'community_activist': "Which zone activation poses the greatest risk?",
+        'council_planner': "Final confirmation of 'activation legitimacy'."
+    };
+    const concern = V0_CONCERNS[stakeholder.role_id] || "Analyzing the proposal...";
     
     const profileContent = document.getElementById('profileContent');
     profileContent.innerHTML = `
+        <div class="bg-gray-50 rounded-xl p-4 mb-6">
+            <h3 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <span>🎯</span> Primary Concern
+            </h3>
+            <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm mb-3">
+                <p class="text-sm font-medium text-blue-800 italic">"${concern}"</p>
+            </div>
+            
+            <div class="flex justify-between items-center bg-white p-3 border border-gray-200 rounded-lg">
+                <span class="text-xs text-gray-500 font-bold uppercase">Current Intent</span>
+                <span class="text-sm ${intentClass}">${lastIntent}</span>
+            </div>
+        </div>
+
         <div class="bg-gray-50 rounded-xl p-4 mb-6">
             <h3 class="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <span>📋</span> Attributes
