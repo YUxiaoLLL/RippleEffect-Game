@@ -2415,6 +2415,14 @@ def api_config():
 
 @app.route('/api/rooms', methods=['POST'])
 def create_room():
+    # Auto-cleanup stale rooms (> 2 hours)
+    now = time.time()
+    stale_ids = [rid for rid, r in ROOMS.items() if now - r.get('createdAt', 0) > 7200]
+    for rid in stale_ids:
+        if rid in ROOMS:
+            del ROOMS[rid]
+            print(f"Auto-cleaned stale room: {rid}")
+
     # M1: Limit total rooms
     if len(ROOMS) >= MAX_ROOMS_TOTAL:
         return jsonify({'error': 'Server at capacity (max rooms reached).'}), 503
@@ -2910,7 +2918,8 @@ def handle_scene_update(data):
     # We want to echo back or let client handle optimism. 
     # Usually client updates locally first, so we might want to skip sender if possible.
     # For now, broadcast to all, client can filter by 'playerId' if needed.
-    socketio.emit('scene_object_updated', data, room=room_id)
+    # User Request: Disable Sync (Independent Views)
+    # socketio.emit('scene_object_updated', data, room=room_id)
 
     # M4: Log 3D Event for Persistence
     try:
