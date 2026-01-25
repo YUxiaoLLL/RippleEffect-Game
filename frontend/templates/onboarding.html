@@ -209,41 +209,40 @@
             {{ role.role_name }}
         </p>
 
-        <!-- Toggle Switch -->
-        <!-- Adjusted top position to 545px (Default) or 571px (Architect) -->
-        <div class="absolute {% if role.role_name == 'Architect' %}top-[571px]{% else %}top-[545px]{% endif %} left-[118px] w-[204px] h-[44px] bg-[#f5f6f0] rounded-[15px] flex relative cursor-pointer" onclick="toggleView()">
-            <!-- Active Indicator (Sliding bg) -->
-            <div id="toggleIndicator" class="absolute left-0 top-0 w-[102px] h-[44px] bg-[#f2e5c5] rounded-[15px] shadow-inner transition-all duration-300"></div>
+        <!-- Content Area (Unified v0) -->
+        <div id="profileView" class="toggle-content absolute top-[600px] w-full px-[40px] flex flex-col items-center transition-opacity duration-300 space-y-6">
             
-            <!-- Buttons -->
-            <div class="w-1/2 h-full flex items-center justify-center z-10 text-center">
-                <span class="font-righteous text-[16px] tracking-[1.28px] text-black">Profile</span>
+            <!-- 1. Concern -->
+            <div class="w-full text-center">
+                <h3 class="font-rethink font-bold text-[12px] uppercase tracking-widest text-[#9f9489] mb-1">You Care About</h3>
+                <p class="font-inter font-medium text-[15px] leading-[1.4] {% if role.theme == 'dark' %}text-[#e0e0e0]{% else %}text-[#333]{% endif %}">
+                    {{ role.v0_concern }}
+                </p>
             </div>
-            <div class="w-1/2 h-full flex items-center justify-center z-10 text-center">
-                <span class="font-righteous text-[16px] tracking-[1.28px] text-black opacity-40">Task</span>
+
+            <!-- 2. Power -->
+            <div class="w-full text-center">
+                <h3 class="font-rethink font-bold text-[12px] uppercase tracking-widest text-[#9f9489] mb-1">Your Power</h3>
+                <p class="font-inter font-medium text-[15px] leading-[1.4] {% if role.theme == 'dark' %}text-[#e0e0e0]{% else %}text-[#333]{% endif %}">
+                    {{ role.v0_power }}
+                </p>
             </div>
+
+            <!-- 3. Persuasion -->
+            <div class="w-full text-center">
+                <h3 class="font-rethink font-bold text-[12px] uppercase tracking-widest text-[#9f9489] mb-1">Strategy</h3>
+                <p class="font-inter font-medium text-[15px] leading-[1.4] italic text-[#d98a64]">
+                    "{{ role.v0_persuasion }}"
+                </p>
+            </div>
+
         </div>
 
-        <!-- Content Area (Profile) -->
-        <!-- Adjusted top position to 643px (Default) or 659px (Architect) -->
-        <div id="profileView" class="toggle-content absolute {% if role.role_name == 'Architect' %}top-[659px]{% else %}top-[643px]{% endif %} w-full px-[48px] flex flex-col items-center transition-opacity duration-300">
-            <p class="font-inter font-medium text-[16px] leading-[29px] text-center tracking-[1.28px] {% if role.theme == 'dark' %}text-[#bbbaba]{% else %}text-[#686767]{% endif %}">
-                {{ role.description }}
-            </p>
-        </div>
+        <!-- Hidden Legacy Task View -->
+        <div id="taskView" class="hidden"></div>
 
-        <!-- Content Area (Tasks) -->
-        <!-- ADJUST TASK LIST LOCATION HERE: Change 'top-[626px]' to move the whole list up or down -->
-        <div id="taskView" class="toggle-content hidden-content opacity-0 absolute {% if role.role_name == 'Architect' %}top-[659px]{% else %}top-[626px]{% endif %} w-full px-[48px] flex flex-col items-center transition-opacity duration-300">
-             <!-- ADJUST TEXT SPACING HERE: 
-                  - 'leading-[26px]': Space between lines of text
-                  - 'space-y-4': Space between each bullet point -->
-             <ul class="list-disc list-inside font-inter font-medium text-[16px] leading-[26px] tracking-[1.28px] {% if role.theme == 'dark' %}text-[#bbbaba]{% else %}text-[#686767]{% endif %} text-center w-full space-y-4">
-                {% for task in role.tasks %}
-                    <li>{{ task }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+        <!-- Remove Toggle Switch (Hidden) -->
+        <div class="hidden absolute top-[545px] left-[118px] w-[204px] h-[44px]"></div>
 
         <!-- Fixed Bottom Section: Separator & Tokens -->
         <!-- Adjusted top to 834px -->

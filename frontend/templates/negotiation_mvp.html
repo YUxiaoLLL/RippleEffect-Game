@@ -361,7 +361,7 @@ function renderUI() {
     renderImpactBar();
     renderMessages();
     renderParticipants();
-    document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound}`;
+    document.getElementById('roundTitle').textContent = `Round ${state.currentRound} / 5`;
 }
 
 // --- v0 Logic: Game Brief & Controls ---
@@ -682,38 +682,45 @@ function showStakeholderProfile(stakeholderId) {
         intentClass = `font-bold ${colorMap[lastMsg.zoneId] || 'text-gray-800'}`;
     }
 
-    // v0: Role Concerns
-    const V0_CONCERNS = {
-        'developer': "Which zone activation brings maximum early return?",
-        'urban_designer': "Which zone activation maximizes future design potential?",
-        'resident_homeowner': "Which zone activation disturbs daily life the least?",
-        'resident_social': "Which zone activation ensures affordable living?",
-        'potential_buyer': "Which zone activation maximizes property value?",
-        'community_activist': "Which zone activation poses the greatest risk?",
-        'council_planner': "Final confirmation of 'activation legitimacy'."
-    };
-    const concern = V0_CONCERNS[stakeholder.role_id] || "Analyzing the proposal...";
+    // v0: Role Concerns & Powers
+    const concern = stakeholder.v0_concern || V0_CONCERNS[stakeholder.role_id] || "Analyzing the proposal...";
+    const power = stakeholder.v0_power || "Influence through voting and debate.";
+    const persuasion = stakeholder.v0_persuasion || "Build consensus through dialogue.";
 
     const profileContent = document.getElementById('profileContent');
     profileContent.innerHTML = `
-        <div class="bg-gray-50 rounded-xl p-4 mb-6">
-            <h3 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                <span>🎯</span> Primary Concern
-            </h3>
-            <div class="p-3 bg-white border border-gray-200 rounded-lg shadow-sm mb-3">
-                <p class="text-sm font-medium text-blue-800 italic">"${concern}"</p>
+        <div class="space-y-4">
+            <!-- Concern (Red) -->
+            <div class="bg-red-50 rounded-xl p-4 border border-red-100">
+                <h3 class="font-bold text-red-900 mb-2 flex items-center gap-2 text-sm uppercase tracking-wider">
+                    <span>🎯</span> Primary Concern
+                </h3>
+                <p class="text-base font-medium text-red-800 italic">"${concern}"</p>
+            </div>
+
+            <!-- Power (Blue) -->
+            <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <h3 class="font-bold text-blue-900 mb-2 flex items-center gap-2 text-sm uppercase tracking-wider">
+                    <span>⚡</span> Power & Influence
+                </h3>
+                <p class="text-sm text-blue-800">${power}</p>
+            </div>
+
+            <!-- Persuasion (Green) -->
+            <div class="bg-green-50 rounded-xl p-4 border border-green-100">
+                <h3 class="font-bold text-green-900 mb-2 flex items-center gap-2 text-sm uppercase tracking-wider">
+                    <span>🤝</span> Winning Strategy
+                </h3>
+                <p class="text-sm text-green-800">${persuasion}</p>
             </div>
             
-            <div class="flex justify-between items-center bg-white p-3 border border-gray-200 rounded-lg">
-                <span class="text-xs text-gray-500 font-bold uppercase">Current Intent</span>
+            <!-- Latest Intent Status -->
+            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+                <span class="text-xs text-gray-500 font-bold uppercase">Current Round Intent</span>
                 <span class="text-sm ${intentClass}">${lastIntent}</span>
             </div>
         </div>
-
-        <div class="bg-gray-50 rounded-xl p-4 mb-6">
-            <h3 class="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>📋</span> Attributes
-            </h3>
+    `;
             <div class="space-y-3 text-sm">
                 <div class="flex justify-between">
                     <span class="text-gray-600">Role:</span>
