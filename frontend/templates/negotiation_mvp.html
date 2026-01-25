@@ -102,8 +102,16 @@
         </button>
     </header>
 
-    <!-- 3D Preview Panel -->
-    <div id="3dPanel" class="relative mx-4 mt-2 h-[35vh] bg-neutral-100 rounded-[30px] overflow-hidden shadow-inner border border-gray-200 z-10">
+    <!-- Participant Panel (Left Sidebar) -->
+    <div class="absolute left-0 top-16 bottom-20 w-16 bg-white/90 backdrop-blur z-20 flex flex-col items-center py-4 gap-4 border-r border-gray-200">
+        <div class="text-[10px] font-bold text-gray-400 mb-2 rotate-180" style="writing-mode: vertical-rl;">PARTICIPANTS</div>
+        <div id="participantList" class="flex flex-col gap-3">
+            <!-- Avatars populated by JS -->
+        </div>
+    </div>
+
+    <!-- 3D Preview Panel (Adjusted Margin) -->
+    <div id="3dPanel" class="relative ml-[4.5rem] mr-4 mt-2 h-[35vh] bg-neutral-100 rounded-[30px] overflow-hidden shadow-inner border border-gray-200 z-10">
         <div class="absolute inset-0" id="three-container">
             <iframe 
                 src="" 
@@ -137,40 +145,111 @@
         <!-- Messages will be added here -->
     </div>
 
-    <!-- Quick Action Buttons -->
-    <div class="px-4 py-2 bg-white/80 backdrop-blur border-t border-gray-100 z-20">
-        <div class="grid grid-cols-2 gap-2" id="quickActions">
-            <button class="action-btn px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-xs font-medium text-gray-700 transition-colors border border-gray-200" data-action="gentle">
-                Gentle Persuasion
-            </button>
-            <button class="action-btn px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-xs font-medium text-gray-700 transition-colors border border-gray-200" data-action="strong">
-                Strong Persuasion
-            </button>
-            <button class="action-btn px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-xs font-medium text-gray-700 transition-colors border border-gray-200" data-action="pressure">
-                Pressure Opponent
-            </button>
-            <button class="action-btn px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-xs font-medium text-gray-700 transition-colors border border-gray-200" data-action="alternative">
-                Propose Alternative
-            </button>
-        </div>
-    </div>
+<!-- Removed Quick Actions for v0 -->
 
-    <!-- Input Bar -->
-    <div class="px-4 py-4 bg-white z-20 safe-area-bottom">
-        <div class="flex gap-2">
-            <input 
-                type="text" 
-                id="messageInput" 
-                placeholder="Type your message..."
-                class="flex-1 px-4 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-inter"
-            />
-            <button id="sendBtn" class="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                </svg>
-            </button>
+    <!-- Turn Action Bar (Replaces Input Bar) -->
+    <div class="px-4 py-4 bg-white z-20 safe-area-bottom border-t border-gray-100">
+        <!-- Turn Progress -->
+        <div id="turnProgress" class="flex justify-between items-center mb-3 px-2">
+            <div class="flex gap-2 items-center">
+                <span class="text-xs font-bold text-gray-500">TURN STEPS:</span>
+                <span id="step1Indicator" class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold transition-colors">1</span>
+                <div class="w-8 h-0.5 bg-gray-200"></div>
+                <span id="step2Indicator" class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors">2</span>
+                <div class="w-8 h-0.5 bg-gray-200"></div>
+                <span id="step3Indicator" class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors">3</span>
+            </div>
+            <div class="text-xs font-mono text-red-500 font-bold" id="turnTimer">01:30</div>
+        </div>
+
+        <!-- Step 1: Statement -->
+        <div id="step1UI" class="block">
+            <div class="flex gap-2">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Step 1: State your opinion (Why?)"
+                    class="flex-1 px-4 py-3 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-inter"
+                />
+                <button onclick="nextStep(2)" class="px-4 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">NEXT</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Intent Marker -->
+        <div id="step2UI" class="hidden">
+            <div class="flex flex-col gap-2">
+                <div class="text-xs text-gray-500 font-medium text-center">Step 2: Place your Intent Marker</div>
+                <div class="flex gap-2 justify-center">
+                    <button onclick="selectZone('A1')" id="btn-A1" class="zone-btn w-16 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors" data-zone="A1">A1</button>
+                    <button onclick="selectZone('A2')" id="btn-A2" class="zone-btn w-16 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors" data-zone="A2">A2</button>
+                    <button onclick="selectZone('K1')" id="btn-K1" class="zone-btn w-16 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors" data-zone="K1">K1</button>
+                </div>
+                <button onclick="nextStep(3)" id="confirmMarkerBtn" class="w-full py-2 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>CONFIRM MARKER</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Vote/Send -->
+        <div id="step3UI" class="hidden">
+            <div class="flex gap-2">
+                <div class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 flex items-center justify-between">
+                    <span>Ready to submit?</span>
+                    <span id="summaryTag" class="font-bold text-blue-600">A1</span>
+                </div>
+                <button id="sendBtn" onclick="submitTurn()" class="px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md">
+                    SUBMIT
+                </button>
+            </div>
         </div>
     </div>
+</div>
+
+<!-- Game Brief Modal -->
+<div id="gameBriefModal" class="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-[slideUp_0.3s_ease-out]">
+        <h2 class="font-righteous text-2xl text-blue-600 mb-4 text-center">MISSION BRIEF</h2>
+        
+        <div class="space-y-4 text-sm font-inter text-gray-700 h-[60vh] overflow-y-auto pr-2">
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <strong class="block text-blue-800 mb-1">🎯 The Goal</strong>
+                <p>Only <strong>ONE</strong> construction team is available.</p>
+                <p>We must decide which zone gets activated <strong>FIRST</strong>: <span class="text-orange-600 font-bold">A1</span>, <span class="text-blue-600 font-bold">A2</span>, or <span class="text-green-600 font-bold">K1</span>.</p>
+            </div>
+
+            <div>
+                <strong class="block text-gray-900 mb-1">📝 Your Turn (1.5 min limit)</strong>
+                <ol class="list-decimal list-inside space-y-1 text-gray-600 pl-1">
+                    <li><strong>Propose:</strong> Write 1-2 sentences.</li>
+                    <li><strong>Mark:</strong> Place your intent marker on a zone.</li>
+                    <li><strong>Vote:</strong> Confirm your choice to lock it in.</li>
+                </ol>
+            </div>
+
+            <div class="bg-red-50 p-3 rounded-lg border border-red-100">
+                <strong class="block text-red-800 mb-1">⚠️ The Rule</strong>
+                <p>Once a zone is activated, it is <strong>LOCKED</strong> and becomes reality. No going back.</p>
+            </div>
+
+            <div>
+                <strong class="block text-gray-900 mb-1">🏁 Outcome</strong>
+                <p>5 Rounds total. The zone with the most support wins.</p>
+            </div>
+        </div>
+
+        <button onclick="closeBrief()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+            I UNDERSTAND - START
+        </button>
+    </div>
+</div>
+
+<!-- Controls Hint Overlay -->
+<div id="controlsHint" class="hidden absolute top-[15vh] left-1/2 -translate-x-1/2 z-40 bg-black/70 backdrop-blur text-white px-6 py-4 rounded-xl text-center pointer-events-none transition-opacity duration-500">
+    <h3 class="font-bold text-yellow-400 mb-2 text-sm">🎮 CONTROLS</h3>
+    <ul class="text-xs space-y-1 text-gray-200">
+        <li>👆 <strong>Left Click + Drag</strong> to Rotate</li>
+        <li>✋ <strong>Right Click + Drag</strong> to Pan</li>
+        <li>🤏 <strong>Scroll</strong> to Zoom</li>
+        <li>🎯 <strong>Click A1/A2/K1</strong> to Select</li>
+    </ul>
 </div>
 
 <!-- Stakeholder Profile Popup -->
@@ -233,6 +312,21 @@ async function initializeNegotiation() {
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
+            
+            // Initialize 3D View with Context
+            const iframe = document.getElementById('threeFrame');
+            const fullscreenFrame = document.getElementById('fullscreenFrame');
+            // Check if we have roomId and playerId in state
+            if (state.roomId) {
+                const src = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=embedded`;
+                if (iframe) iframe.src = src;
+                if (fullscreenFrame) fullscreenFrame.src = src;
+            } else {
+                 // Fallback
+                 if (iframe) iframe.src = "/3d/";
+                 if (fullscreenFrame) fullscreenFrame.src = "/3d/";
+            }
+
             renderUI();
         }
     } catch (error) {

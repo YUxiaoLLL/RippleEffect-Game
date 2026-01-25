@@ -268,7 +268,7 @@ STANCES = {
     "compromise": "Compromise"
 }
 NEUTRAL_SCORE = 50 # Default neutral score
-MAX_ROUNDS = 8
+MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
 EVENT_PROBABILITY = 0.25  # 25% chance of an event each round
 TOKEN_REGEN_RATE = 2  # How many influence tokens characters regain each round
@@ -753,6 +753,21 @@ def get_stance_category(score):
     else:
         return "Neutral"
 
+
+# v0 Role Concerns (English)
+V0_ROLE_CONCERNS = {
+    'developer': "Which zone activation brings maximum early return?",
+    'urban_designer': "Which zone activation maximizes future design potential?", # Architect
+    'resident_homeowner': "Which zone activation disturbs daily life the least?", # Resident
+    'resident_social': "Which zone activation ensures affordable living?", # Social Resident (Fallback)
+    'potential_buyer': "Which zone activation maximizes property value?", # Buyer
+    'community_activist': "Which zone activation poses the greatest risk?", # Activist
+    'council_planner': "Final confirmation of 'activation legitimacy'." # Councillor
+}
+
+@app.route('/api/v0/roles')
+def get_v0_roles():
+    return jsonify(V0_ROLE_CONCERNS)
 
 @app.route('/')
 def home():
@@ -2839,6 +2854,39 @@ def _auto_play_ai_chain(room_id, room, max_steps=None):
     return
 
 
+@app.route('/api/export/room/<room_id>/session')
+def export_room_session(room_id):
+    """Export full game session data for analysis."""
+    room_id = (room_id or '').upper()
+    conn, db_type = get_db_connection()
+    try:
+        query = "SELECT * FROM events WHERE room_id = %s ORDER BY ts ASC" if db_type == 'postgres' else "SELECT * FROM events WHERE room_id = ? ORDER BY ts ASC"
+        
+        if db_type == 'postgres':
+            with conn.cursor() as cur:
+                cur.execute(query, (room_id,))
+                rows = cur.fetchall()
+        else:
+            rows = conn.execute(query, (room_id,)).fetchall()
+            
+        events = [dict(row) for row in rows]
+        
+        # Structure for v0 Analysis
+        export_data = {
+            'meta': {
+                'room_id': room_id,
+                'exported_at': time.time(),
+                'version': 'v0'
+            },
+            'timeline': events
+        }
+        
+        return jsonify(export_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route('/api/rooms/<room_id>/start', methods=['POST'])
 def start_room(room_id):
     room_id = (room_id or '').upper()
@@ -2953,6 +3001,7 @@ def send_message(room_id):
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')
     text = payload.get('text', '').strip()
+    intent = payload.get('intent') # v0: Explicit Intent Marker
 
     if not player_id:
         return jsonify({'error': 'Player ID required.'}), 400
@@ -2971,7 +3020,12 @@ def send_message(room_id):
     negotiation_state.setdefault('current_round_dialogue', {})
     negotiation_state['current_round_dialogue'][player_id] = text
 
-    zid = infer_active_zone_id(text, negotiation_state.get('active_zone_id') or 'GLOBAL')
+    # v0: Use explicit intent if provided, otherwise infer
+    if intent:
+        zid = intent
+    else:
+        zid = infer_active_zone_id(text, negotiation_state.get('active_zone_id') or 'GLOBAL')
+    
     negotiation_state['active_zone_id'] = zid
     negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
     negotiation_state.setdefault('current_round_meta', {})
@@ -2980,6 +3034,7 @@ def send_message(room_id):
         'zone_id': zid,
         'issue_tag': negotiation_state.get('active_issue_tag'),
         'role_id': (me or {}).get('role_id'),
+        'intent': intent # Store intent
     }
 
     # M2: Log Event
@@ -2987,7 +3042,7 @@ def send_message(room_id):
         room_id, 
         player_id, 
         'MESSAGE_SENT', 
-        payload={'text': text, 'zone': zid}, 
+        payload={'text': text, 'zone': zid, 'intent': intent}, 
         role=(me or {}).get('role_id'), 
         round_idx=negotiation_state.get('round'), 
         turn_idx=game_state.get('turn_index')
