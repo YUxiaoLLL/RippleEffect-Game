@@ -791,8 +791,7 @@ function loadData() {
       initLayerUI();
       applyLayerStyles();
       
-      // v0: Init Indicators
-      calculateZoneCenters();
+      if (typeof calculateZoneCenters === 'function') calculateZoneCenters();
 
       // 4. Load other layers (async, non-blocking)
       const layers = [
@@ -1084,6 +1083,120 @@ renderer.domElement.addEventListener('mousemove', onMouseMove, false);
 renderer.domElement.addEventListener('mousedown', onMouseDown, false);
 renderer.domElement.addEventListener('mouseup', onMouseUp, false);
 
+// --- Zone Indicators (v0) ---
+let zoneIndicators = {}; // { 'A1': mesh, 'A2': mesh, ... }
+let indicatorGroup = new THREE.Group();
+scene.add(indicatorGroup);
+
+function calculateZoneCenters() {
+    // Calculate centers for A1, A2, K1 based on masterplanData
+    const zones = ['A1', 'A2', 'K1'];
+    
+    zones.forEach(zone => {
+        if (!masterplanData[zone] || !masterplanData[zone].ids) return;
+        
+        const ids = masterplanData[zone].ids;
+        let sumX = 0, sumZ = 0, count = 0;
+        
+        ids.forEach(id => {
+            // Find mesh with this ID
+            const mesh = buildings.find(b => {
+                const fid = b.userData.fid || String(b.userData.id);
+                return fid === id || b.userData.id === id;
+            });
+            
+            if (mesh) {
+                sumX += mesh.position.x;
+                sumZ += mesh.position.z;
+                count++;
+            }
+        });
+        
+        if (count > 0) {
+            createZoneArrow(zone, new THREE.Vector3(sumX / count, 60, sumZ / count));
+        }
+    });
+}
+
+function createZoneArrow(label, position) {
+    const group = new THREE.Group();
+    
+    // 1. Arrow Body (Cylinder)
+    const col = label === 'A1' ? 0xF97316 : label === 'A2' ? 0x3B82F6 : 0x22C55E; // Orange, Blue, Green
+    const mat = new THREE.MeshBasicMaterial({ color: col });
+    
+    const bodyGeo = new THREE.CylinderGeometry(2, 2, 10, 8);
+    const body = new THREE.Mesh(bodyGeo, mat);
+    body.position.y = 5;
+    group.add(body);
+    
+    // 2. Arrow Head (Cone)
+    const headGeo = new THREE.ConeGeometry(5, 8, 8);
+    const head = new THREE.Mesh(headGeo, mat);
+    head.rotation.x = Math.PI; // Point down
+    head.position.y = -2;
+    group.add(head);
+    
+    group.position.copy(position);
+    group.visible = true; // v0: Visible by default
+    
+    indicatorGroup.add(group);
+    zoneIndicators[label] = group;
+}
+
+function toggleZoneIndicator(zone) {
+    // Highlight selected, keep others normal
+    Object.values(zoneIndicators).forEach(mesh => mesh.scale.set(1,1,1));
+    if (zone && zoneIndicators[zone]) {
+        zoneIndicators[zone].scale.set(1.5, 1.5, 1.5);
+    }
+}
+
+function animateIndicators(time) {
+    const bounce = Math.sin(time * 5) * 5; // +/- 5 units
+    Object.values(zoneIndicators).forEach(mesh => {
+        if (mesh.visible) {
+            mesh.position.y = 60 + bounce;
+            mesh.rotation.y += 0.02;
+        }
+    });
+}
+
+// Listen for highlight messages from parent
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'HIGHLIGHT_ZONE') {
+        const zone = event.data.zone;
+        console.log("[3D] Highlight Zone:", zone);
+        toggleZoneIndicator(zone);
+        
+        // Also highlight buildings
+        highlightZoneBuildings(zone);
+    }
+});
+
+function highlightZoneBuildings(zone) {
+    // Reset all highlights
+    clearSelection();
+    
+    if (!zone) return;
+    
+    const plotInfo = masterplanData[zone];
+    if (!plotInfo) return;
+    
+    // Highlight relevant meshes
+    buildings.forEach(mesh => {
+        const rawFid = mesh.userData.fid;
+        const fid = rawFid ? String(rawFid).trim() : String(mesh.userData.id);
+        
+        if (plotInfo.ids.includes(fid)) {
+             // Determine color
+             const color = zone === 'A1' ? 0xF97316 : zone === 'A2' ? 0x3B82F6 : 0x22C55E;
+             highlightMesh(mesh, color, 0.8);
+             activeSelectionGroup.push(mesh);
+        }
+    });
+}
+
 // --- Render Loop ---
 function animate() {
   requestAnimationFrame(animate);
@@ -1096,6 +1209,8 @@ function animate() {
   }
   
   updateSunFromTime(simTime);
+  
+  if (typeof animateIndicators === 'function') animateIndicators(clock.getElapsedTime());
 
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(buildings);
