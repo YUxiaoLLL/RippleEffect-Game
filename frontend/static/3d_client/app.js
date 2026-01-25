@@ -298,6 +298,8 @@ if (window.io && roomId) {
         socket.emit('join_room_socket', { roomId });
     });
 
+    /* 
+    // User Request: Disable Sync
     socket.on('scene_object_updated', (data) => {
         if (data.playerId === playerId) return; // Skip own updates
 
@@ -322,6 +324,7 @@ if (window.io && roomId) {
             // Re-compute bounding box if needed, or visual updates
         }
     });
+    */
 }
 
 function emitObjectUpdate(mesh) {
