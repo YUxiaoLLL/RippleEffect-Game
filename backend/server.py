@@ -149,6 +149,15 @@ print(
 )
 # --- End Debug --- #
 
+
+def _is_host_request():
+    """
+    Helper to check if request allows host privileges (e.g. localhost/admin).
+    For production security, we default to False and rely on session hostId.
+    """
+    return False
+
+
 # --- Setup ---
 # Calculate absolute paths to ensure Flask finds templates/static regardless of where the script is run from
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # Directory of server.py (backend/)
