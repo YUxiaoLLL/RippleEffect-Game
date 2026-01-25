@@ -664,22 +664,6 @@ function showStakeholderProfile(stakeholderId) {
             </div>
         </div>
     `;
-            <div class="space-y-3 text-sm">
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Role:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.role_name}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Objectives:</span>
-                    <span class="font-medium text-gray-900 text-right max-w-[200px]">${stakeholder.backstory || 'No description'}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-600">Influence Tokens:</span>
-                    <span class="font-medium text-gray-900">${stakeholder.influence_tokens}</span>
-                </div>
-            </div>
-        </div>
-    `;
     
     document.getElementById('profileName').textContent = stakeholder.name || "You";
     document.getElementById('profileRole').textContent = stakeholder.role_name;

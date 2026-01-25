@@ -2456,6 +2456,16 @@ def create_room():
     return jsonify({'roomId': room_id})
 
 
+@app.route('/version')
+def get_version():
+    """Debug endpoint to verify deployment version."""
+    return jsonify({
+        "version": "v0.1-Fix-Logs-And-Error-Handling",
+        "timestamp": time.time(),
+        "message": "If you see this, the new code is running!"
+    })
+
+
 @app.route('/api/admin/reset_rooms', methods=['POST'])
 def admin_reset_rooms():
     """Admin: Force clear all rooms. Protected by PIN."""
@@ -2474,57 +2484,61 @@ def admin_reset_rooms():
 
 @app.route('/api/rooms/<room_id>/join', methods=['POST'])
 def join_room_api(room_id):
-    room_id = (room_id or '').upper()
-    room = ROOMS.get(room_id)
-    if not room:
-        return jsonify({'ok': False, 'error': 'Room not found.'}), 404
-
-    if room.get('phase') != 'lobby':
-        return jsonify({'ok': False, 'error': 'Room already started.'}), 400
-
-    payload = request.get_json(silent=True) or {}
-    player_name = (payload.get('playerName') or '').strip() or 'Player'
-
-    if len(room.get('players', [])) >= int(room.get('config', {}).get('maxHumans', 4)):
-        return jsonify({'ok': False, 'error': 'Room is full.'}), 400
-
-    payload = request.get_json(silent=True) or {}
-    player_id = payload.get('playerId') or session.get('player_id')
-    if player_id:
-        existing = next((p for p in room['players'] if p.get('id') == player_id), None)
-        if existing:
-            # M3: Re-hydrate session for persistent identity
-            session['room_id'] = room_id
-            session['player_id'] = player_id
-            
-            # M3: Ensure hostId isn't lost if this was the host rejoining
-            if room.get('hostId') == player_id:
-                 # Logic ensures they remain host
-                 pass
-                 
-            return jsonify({'ok': True, 'playerId': player_id})
-
-    if not player_id:
-        player_id = f"player_{uuid.uuid4().hex[:8]}"
-    
-    session['player_id'] = player_id
-    session['room_id'] = room_id
-
-    room['players'].append({'id': player_id, 'name': player_name, 'role': None})
-    
-    # Assign host to the first player if not set (removes strict IP check for robustness)
-    if room.get('hostId') is None:
-        room['hostId'] = player_id
-
-    # M2: Log Event
-    log_event(room_id, player_id, 'PLAYER_JOINED', payload={'name': player_name})
-
     try:
-        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
-    except Exception:
-        pass
+        room_id = (room_id or '').upper()
+        room = ROOMS.get(room_id)
+        if not room:
+            return jsonify({'ok': False, 'error': 'Room not found.'}), 404
 
-    return jsonify({'ok': True, 'playerId': player_id})
+        if room.get('phase') != 'lobby':
+            return jsonify({'ok': False, 'error': 'Room already started.'}), 400
+
+        payload = request.get_json(silent=True) or {}
+        player_name = (payload.get('playerName') or '').strip() or 'Player'
+
+        if len(room.get('players', [])) >= int(room.get('config', {}).get('maxHumans', 4)):
+            return jsonify({'ok': False, 'error': 'Room is full.'}), 400
+
+        player_id = payload.get('playerId') or session.get('player_id')
+        if player_id:
+            existing = next((p for p in room['players'] if p.get('id') == player_id), None)
+            if existing:
+                # M3: Re-hydrate session for persistent identity
+                session['room_id'] = room_id
+                session['player_id'] = player_id
+                
+                # M3: Ensure hostId isn't lost if this was the host rejoining
+                if room.get('hostId') == player_id:
+                     pass
+                     
+                return jsonify({'ok': True, 'playerId': player_id})
+
+        if not player_id:
+            player_id = f"player_{uuid.uuid4().hex[:8]}"
+        
+        session['player_id'] = player_id
+        session['room_id'] = room_id
+
+        room['players'].append({'id': player_id, 'name': player_name, 'role': None})
+        
+        # Assign host to the first player if not set
+        if room.get('hostId') is None:
+            room['hostId'] = player_id
+
+        # M2: Log Event
+        log_event(room_id, player_id, 'PLAYER_JOINED', payload={'name': player_name})
+
+        try:
+            socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+        except Exception as e:
+            print(f"Socket emit error in join_room: {e}")
+
+        return jsonify({'ok': True, 'playerId': player_id})
+    except Exception as e:
+        print(f"CRITICAL ERROR in join_room_api: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': 'Internal Server Error'}), 500
 
 
 @app.route('/api/rooms/<room_id>/state')
