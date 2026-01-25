@@ -3,6 +3,11 @@ eventlet.monkey_patch()
 
 import sys
 import os
+
+# --- DEPLOYMENT VERSION CHECK ---
+print("### DEPLOY VERSION: v0.1-Fix-Logs-And-Error-Handling (Commit: 4dfef21) ###", flush=True)
+# --------------------------------
+
 # Fix for Render/Gunicorn: Ensure backend directory is in sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
