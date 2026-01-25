@@ -2437,10 +2437,26 @@ def create_room():
         'game_state': {} # Stores turn order, history, etc.
     }
     
-    # M2: Log Event
-    log_event(room_id, player_id, 'ROOM_CREATED', payload=payload)
+    # M2: Log Event (Fix: Use host_id instead of undefined player_id)
+    log_event(room_id, host_id, 'ROOM_CREATED', payload=payload)
     
     return jsonify({'roomId': room_id})
+
+
+@app.route('/api/admin/reset_rooms', methods=['POST'])
+def admin_reset_rooms():
+    """Admin: Force clear all rooms. Protected by PIN."""
+    payload = request.get_json(silent=True) or {}
+    pin = payload.get('pin')
+    
+    # SITE_PASSWORD is loaded from env or defaults to '2026'
+    if str(pin) != str(SITE_PASSWORD):
+        return jsonify({'error': 'Invalid PIN'}), 403
+        
+    count = len(ROOMS)
+    ROOMS.clear()
+    print(f"ADMIN: Cleared {count} rooms.")
+    return jsonify({'ok': True, 'message': f'Cleared {count} rooms.'})
 
 
 @app.route('/api/rooms/<room_id>/join', methods=['POST'])

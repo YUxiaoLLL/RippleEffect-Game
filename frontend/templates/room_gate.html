@@ -247,6 +247,28 @@
             setTimeout(() => el.innerText = "", 3000);
         }
 
+        async function resetServer() {
+            const pin = prompt("Enter Admin PIN to clear all rooms (Default: 2026):", "2026");
+            if (!pin) return;
+
+            try {
+                const res = await fetch('/api/admin/reset_rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pin })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    alert(data.message);
+                    window.location.reload();
+                } else {
+                    alert("Error: " + (data.error || "Failed"));
+                }
+            } catch (e) {
+                alert("Network Error");
+            }
+        }
+
         init();
     </script>
 </body>
