@@ -198,7 +198,7 @@ ROOMS = {}  # Global in-memory room storage
 MAX_ROOMS_TOTAL = 3 # M1: Limit total rooms for stability
 
 # M1: Global Access Gate
-SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '2026'
+SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '0618'
 
 @app.before_request
 def check_access():
