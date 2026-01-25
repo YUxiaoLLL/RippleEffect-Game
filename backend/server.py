@@ -1186,20 +1186,13 @@ def negotiation():
     active_zone_id = (negotiation_state.get('active_zone_id') or 'GLOBAL').upper()
     active_zone_facts = (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {})
 
-    return render_template('round_gaming.html',
+    # Switch to negotiation_mvp.html for v0 release
+    return render_template('negotiation_mvp.html',
                            state=state_for_template,
                            characters=characters_for_template,
                            player_profile=player_profile,
                            climate_score=negotiation_state.get('negotiation_climate', 50),
-                           max_rounds=MAX_ROUNDS,
-                           INFLUENCE_ACTION_COSTS=INFLUENCE_ACTION_COSTS,
-                           room_id=current_room_id,
-                           is_host=is_host,
-                           turn_order=turn_order,
-                           turn_index=turn_index,
-                           current_speaker=current_speaker,
-                           active_zone_facts=active_zone_facts)
-
+                           max_rounds=MAX_ROUNDS)
 
 @app.route('/negotiation_mvp_demo')
 def negotiation_mvp_demo():

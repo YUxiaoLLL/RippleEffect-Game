@@ -361,7 +361,7 @@ function renderUI() {
     renderImpactBar();
     renderMessages();
     renderParticipants();
-    document.getElementById('roundTitle').textContent = `Round ${state.currentRound} / 5`;
+    document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound}`;
 }
 
 // --- v0 Logic: Game Brief & Controls ---
@@ -378,71 +378,12 @@ function closeBrief() {
     }
 }
 
-// --- v0 Logic: 3-Step Turn ---
-let turnStep = 1;
-
-function nextStep(step) {
-    if (step === 2) {
-        const input = document.getElementById('messageInput');
-        if (!input.value.trim()) {
-            alert("Please enter a statement first.");
-            return;
-        }
-        state.tempStatement = input.value.trim();
-    }
-    
-    // Update UI visibility
-    document.getElementById(`step${turnStep}UI`).classList.add('hidden');
-    document.getElementById(`step${step}UI`).classList.remove('hidden');
-    
-    // Update Indicators
-    updateStepIndicators(step);
-    turnStep = step;
-}
-
-function updateStepIndicators(current) {
-    for (let i=1; i<=3; i++) {
-        const el = document.getElementById(`step${i}Indicator`);
-        if (!el) continue;
-        
-        if (i === current) {
-            el.className = "w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold transition-colors";
-        } else if (i < current) {
-            el.className = "w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs font-bold transition-colors";
-        } else {
-            el.className = "w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors";
-        }
-    }
-}
+// --- v0 Logic: 3-Step Turn (Simplified to Single Step) ---
 
 function selectZone(zone) {
     state.selectedIntentZone = zone;
     
-    // Update Button Styles
-    ['A1', 'A2', 'K1'].forEach(z => {
-        const btn = document.getElementById(`btn-${z}`);
-        if (!btn) return;
-        
-        if (z === zone) {
-            // Active Style
-            btn.className = "zone-btn w-16 py-2 rounded-lg border-2 border-gray-800 bg-gray-800 text-white font-bold text-xs transition-colors";
-        } else {
-            // Inactive Style (Reset to default based on zone)
-            const colors = {
-                'A1': 'border-orange-500 text-orange-600 hover:bg-orange-50',
-                'A2': 'border-blue-500 text-blue-600 hover:bg-blue-50',
-                'K1': 'border-green-500 text-green-600 hover:bg-green-50'
-            };
-            btn.className = `zone-btn w-16 py-2 rounded-lg border-2 ${colors[z]} font-bold text-xs transition-colors`;
-        }
-    });
-    
-    document.getElementById('confirmMarkerBtn').disabled = false;
-    
-    // Update Summary in Step 3
-    document.getElementById('summaryTag').innerText = zone;
-    
-    // Trigger 3D highlight via iframe messaging
+    // Highlight 3D
     const iframe = document.getElementById('threeFrame');
     if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zone }, '*');
@@ -450,20 +391,28 @@ function selectZone(zone) {
 }
 
 async function submitTurn() {
-    if (!state.tempStatement || !state.selectedIntentZone) return;
+    const messageInput = document.getElementById('messageInput');
+    const intentSelect = document.getElementById('intentSelect');
+    
+    const text = messageInput.value.trim();
+    const intent = intentSelect.value;
+
+    if (!text) {
+        alert("Please write your argument first.");
+        return;
+    }
+    if (!intent) {
+        alert("Please select a Target Zone (A1, A2, or K1).");
+        return;
+    }
     
     const sendBtn = document.getElementById('sendBtn');
     sendBtn.disabled = true;
-    sendBtn.innerText = "SENDING...";
+    sendBtn.innerText = "...";
 
-    const payload = {
-        text: state.tempStatement,
-        intent: state.selectedIntentZone
-    };
-    
     try {
         let url = '/negotiation'; 
-        let body = `action=submit_statement&player_statement=${encodeURIComponent(payload.text)}&intent=${payload.intent}`;
+        let body = `action=submit_statement&player_statement=${encodeURIComponent(text)}&intent=${intent}`;
         let headers = { 
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-Requested-With': 'XMLHttpRequest'
@@ -474,28 +423,19 @@ async function submitTurn() {
             url = `/api/rooms/${state.roomId}/send`;
             body = JSON.stringify({
                 playerId: state.myPlayerId,
-                text: payload.text,
-                intent: payload.intent
+                text: text,
+                intent: intent
             });
             headers = { 'Content-Type': 'application/json' };
         }
 
         const res = await fetch(url, { method: 'POST', headers, body });
         if (res.ok) {
-            // Reset Step UI
-            turnStep = 1;
+            // Reset UI
+            messageInput.value = '';
+            intentSelect.value = '';
             state.selectedIntentZone = null;
-            state.tempStatement = null;
-            document.getElementById('messageInput').value = '';
             
-            document.getElementById('step3UI').classList.add('hidden');
-            document.getElementById('step1UI').classList.remove('hidden');
-            updateStepIndicators(1);
-            
-            // Reset buttons
-            selectZone(null); // Clear selection visually
-            document.getElementById('confirmMarkerBtn').disabled = true;
-
             // Single player response handling
             if (!state.roomId) {
                 const data = await res.json();
@@ -504,6 +444,9 @@ async function submitTurn() {
                     renderUI();
                 }
             }
+        } else {
+            const err = await res.json();
+            alert("Error: " + (err.message || "Failed to submit turn."));
         }
     } catch (e) {
         console.error("Submit error", e);
