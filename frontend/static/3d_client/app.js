@@ -996,6 +996,26 @@ function onMouseUp(event) {
   if (downPos.distanceTo(upPos) > 5) return;
 
   raycaster.setFromCamera(mouse, camera);
+
+  const indicatorIntersects = raycaster.intersectObjects(indicatorGroup.children, true);
+  if (indicatorIntersects.length > 0) {
+    let obj = indicatorIntersects[0].object;
+    while (obj && !(obj.userData && obj.userData.zone) && obj.parent) {
+      obj = obj.parent;
+    }
+    const zone = obj && obj.userData ? obj.userData.zone : null;
+    if (zone) {
+      toggleZoneIndicator(zone);
+      highlightZoneBuildings(zone);
+      try {
+        window.parent.postMessage({ type: 'ZONE_CLICK', zone }, '*');
+      } catch (e) {
+        console.warn('[3D] postMessage failed', e);
+      }
+      return;
+    }
+  }
+
   const intersects = raycaster.intersectObjects(clickableObjects);
 
   // --- DEV TOOL: Shift+Click to gather IDs ---
@@ -1088,6 +1108,8 @@ let zoneIndicators = {}; // { 'A1': mesh, 'A2': mesh, ... }
 let indicatorGroup = new THREE.Group();
 cityGroup.add(indicatorGroup); // Fix: Add to cityGroup to match building coordinates
 
+let selectedZoneIndicator = null;
+
 function calculateZoneCenters() {
     console.log("[3D] Calculating Zone Centers...");
     // Calculate centers for A1, A2, K1 based on masterplanData
@@ -1145,10 +1167,32 @@ function createZoneArrow(label, position) {
     head.position.y = -5;
     group.add(head);
     
-    // 3. Floating Label (Simple Plane)
-    // Optional: Add a sprite text later if needed
+    const labelText = label === 'A1' ? 'A1 — High-end Commercial' : label === 'A2' ? 'A2 — High-end Residential' : 'K1 — Affordable Housing';
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 44px Inter, Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelText, canvas.width / 2, canvas.height / 2);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.position.set(0, 32, 0);
+    sprite.scale.set(90, 22, 1);
+    group.add(sprite);
     
     group.position.copy(position);
+    group.userData.baseY = position.y;
+    group.userData.zone = label;
     group.visible = true; // v0: Visible by default
     
     indicatorGroup.add(group);
@@ -1165,16 +1209,24 @@ function toggleZoneIndicator(zone) {
     if (zone && zoneIndicators[zone]) {
         zoneIndicators[zone].scale.set(1.5, 1.5, 1.5);
         zoneIndicators[zone].children.forEach(c => c.material.opacity = 1.0); // Brighten selected
+        selectedZoneIndicator = zone;
+    } else {
+        selectedZoneIndicator = null;
     }
 }
 
 function animateIndicators(time) {
     const bounce = Math.sin(time * 5) * 10; // +/- 10 units
-    Object.values(zoneIndicators).forEach(mesh => {
-        if (mesh.visible) {
-            mesh.position.y = 120 + bounce; // Base height 120
-            mesh.rotation.y += 0.02;
+    Object.entries(zoneIndicators).forEach(([zone, mesh]) => {
+        if (!mesh.visible) return;
+        const baseY = typeof mesh.userData.baseY === 'number' ? mesh.userData.baseY : 120;
+        if (selectedZoneIndicator && zone === selectedZoneIndicator) {
+            mesh.position.y = baseY;
+            mesh.rotation.y = 0;
+            return;
         }
+        mesh.position.y = baseY + bounce;
+        mesh.rotation.y += 0.02;
     });
 }
 

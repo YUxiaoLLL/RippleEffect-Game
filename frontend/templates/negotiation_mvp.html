@@ -156,9 +156,9 @@
         </div>
         <!-- Turn Info & Order -->
         <div class="flex justify-between items-center mb-3 px-2">
-            <div class="flex flex-col">
+            <div class="flex flex-col flex-1 min-w-0">
                 <div class="text-xs font-bold text-gray-500 mb-1">TURN ORDER:</div>
-                <div id="turnOrderDisplay" class="flex items-center gap-2 overflow-x-auto max-w-[200px] no-scrollbar">
+                <div id="turnOrderDisplay" class="flex items-start gap-3 overflow-x-auto no-scrollbar pr-2">
                     <!-- Populated by JS -->
                     <span class="text-xs text-gray-400 italic">Loading...</span>
                 </div>
@@ -201,6 +201,25 @@
                     SUBMIT
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="zoneInfoModal" class="hidden fixed inset-0 z-[55]">
+    <div class="absolute inset-0 bg-black/40" id="zoneInfoOverlay"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b px-4 py-4 flex justify-between items-center">
+            <h2 class="text-lg font-bold" id="zoneInfoTitle"></h2>
+            <button id="closeZoneInfo" class="p-2 hover:bg-gray-100 rounded-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div class="text-sm text-gray-700" id="zoneInfoBody"></div>
+            <div class="text-sm font-medium text-gray-900 italic" id="zoneInfoHint"></div>
+            <div class="text-xs text-gray-500" id="zoneInfoNote">Note: Selecting a zone shows your current position for this round. You can change your selection before the round ends.</div>
         </div>
     </div>
 </div>
@@ -311,6 +330,24 @@ const V0_CONCERNS = {
     'community_activist': "Which zone activation poses the greatest risk?",
     'potential_buyer': "Which zone activation maximizes property value?",
     'urban_designer': "Which zone activation maximizes future design potential?"
+};
+
+const ZONE_INFO = {
+    'A1': {
+        title: 'A1 — High-end Commercial Development',
+        body: "This zone represents a high-value commercial development.<br><br>Activating A1 first may generate strong economic returns and attract external investment, but it could also increase pressure on surrounding areas and reduce flexibility for later community-oriented development.",
+        hint: 'Selecting A1 means you currently support prioritizing economic growth.'
+    },
+    'A2': {
+        title: 'A2 — High-end Residential Development',
+        body: "This zone represents a premium residential development.<br><br>Activating A2 first may improve housing quality and long-term property value, but it risks limiting affordability and shaping the area primarily around private ownership interests.",
+        hint: 'Selecting A2 means you currently support prioritizing long-term residential value.'
+    },
+    'K1': {
+        title: 'K1 — Affordable Housing (Council-led)',
+        body: "This zone represents publicly supported affordable housing.<br><br>Activating K1 first may address social equity and housing accessibility, but it could reduce immediate financial returns and constrain future design or funding options.",
+        hint: 'Selecting K1 means you currently support prioritizing social housing needs.'
+    }
 };
 
 // --- v0 Logic: Game Brief ---
@@ -446,18 +483,48 @@ function renderTurnOrder() {
         
         const isCurrent = playerId === state.currentSpeaker;
         const isDone = index < state.turnIndex;
-        
-        const div = document.createElement('div');
-        div.className = `flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs border-2 transition-all ${
-            isCurrent ? 'border-yellow-400 scale-110 shadow-md z-10' : 
+
+        const isHuman = Boolean(stakeholder.is_player);
+        const roleLabel = `${stakeholder.role_name || stakeholder.role_id}${isHuman ? ' (H)' : ''}`;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'flex-shrink-0 flex flex-col items-center w-14';
+
+        const icon = document.createElement('div');
+        icon.className = `w-8 h-8 rounded-full flex items-center justify-center text-xs border-2 transition-all ${
+            isCurrent ? 'border-yellow-400 scale-110 shadow-md z-10' :
             isDone ? 'border-gray-300 opacity-50' : 'border-transparent bg-gray-100'
         }`;
-        div.style.backgroundColor = isCurrent || !isDone ? getAvatarColor(stakeholder.role_id) : '#e5e7eb';
-        div.textContent = getStakeholderEmoji(stakeholder.role_id);
-        div.title = stakeholder.role_name;
-        
-        container.appendChild(div);
+        icon.style.backgroundColor = isCurrent || !isDone ? getAvatarColor(stakeholder.role_id) : '#e5e7eb';
+        icon.textContent = getStakeholderEmoji(stakeholder.role_id);
+        icon.title = roleLabel;
+
+        const label = document.createElement('div');
+        label.className = `mt-1 text-[9px] leading-tight text-gray-600 text-center ${isCurrent ? 'font-bold text-gray-800' : ''}`;
+        label.textContent = roleLabel;
+
+        wrap.appendChild(icon);
+        wrap.appendChild(label);
+        container.appendChild(wrap);
     });
+}
+
+function openZoneInfo(zone) {
+    const z = (zone || '').toUpperCase();
+    const info = ZONE_INFO[z];
+    if (!info) return;
+    const modal = document.getElementById('zoneInfoModal');
+    if (!modal) return;
+    document.getElementById('zoneInfoTitle').textContent = info.title;
+    document.getElementById('zoneInfoBody').innerHTML = info.body;
+    document.getElementById('zoneInfoHint').textContent = info.hint;
+    modal.classList.remove('hidden');
+}
+
+function closeZoneInfo() {
+    const modal = document.getElementById('zoneInfoModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
 }
 
 function updateTurnControls() {
@@ -611,6 +678,20 @@ async function submitTurn() {
 window.selectZone = selectZone;
 window.submitTurn = submitTurn;
 window.showStakeholderProfile = showStakeholderProfile;
+
+window.addEventListener('message', (event) => {
+    if (!event || !event.data) return;
+    if (event.data.type === 'ZONE_CLICK') {
+        const zone = event.data.zone;
+        openZoneInfo(zone);
+        if (state.currentSpeaker === state.myPlayerId) {
+            selectZone(zone);
+        }
+    }
+});
+
+document.getElementById('zoneInfoOverlay').addEventListener('click', closeZoneInfo);
+document.getElementById('closeZoneInfo').addEventListener('click', closeZoneInfo);
 
 // --- v0 Logic: Participant Panel ---
 function renderParticipants() {
