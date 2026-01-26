@@ -1412,7 +1412,7 @@ def format_history_as_messages(history, current_user_id=None, meta_history=None,
             messages.append({
                 'id': f"{round_idx}_{char_id}",
                 'sender': 'player' if is_player else 'ai',
-                'stakeholderId': None if is_player else char_id,
+                'stakeholderId': char_id, # Always return ID to distinguish players
                 'content': statement,
                 'timestamp': None,
                 'zoneId': meta.get('zone_id'),

@@ -632,10 +632,10 @@ function renderMessages() {
 }
 
 function createMessageBubble(message) {
-    const isPlayer = message.sender === 'player';
-    const stakeholder = isPlayer ? null : state.stakeholders.find(s => s.id === message.stakeholderId);
+    // Check if it's strictly ME
+    const isMe = message.stakeholderId === state.myPlayerId;
     
-    if (isPlayer) {
+    if (isMe) {
         return `
             <div class="chat-bubble flex justify-end mb-4">
                 <div class="max-w-[70%] px-4 py-3 bg-blue-600 text-white rounded-2xl rounded-tr-sm">
@@ -643,17 +643,25 @@ function createMessageBubble(message) {
                 </div>
             </div>
         `;
-    } else if (stakeholder) {
-        const avatarColor = getAvatarColor(stakeholder.role_id);
+    } else {
+        // It's either AI or another human player
+        const stakeholder = state.stakeholders.find(s => s.id === message.stakeholderId);
+        
+        // Fallback for unknown stakeholders
+        const name = stakeholder ? stakeholder.name : (message.sender === 'player' ? 'Another Player' : 'Unknown');
+        const roleId = stakeholder ? stakeholder.role_id : 'resident_homeowner'; // default fallback
+        const avatarColor = getAvatarColor(roleId);
+        const emoji = getStakeholderEmoji(roleId);
+        
         return `
             <div class="chat-bubble flex gap-3 mb-4">
                 <div class="avatar-circle flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg" 
                      style="background-color: ${avatarColor};"
-                     onclick="showStakeholderProfile('${stakeholder.id}')">
-                    ${getStakeholderEmoji(stakeholder.role_id)}
+                     onclick="showStakeholderProfile('${message.stakeholderId}')">
+                    ${emoji}
                 </div>
                 <div class="max-w-[70%]">
-                    <div class="text-xs text-gray-600 mb-1 font-medium">${stakeholder.name}</div>
+                    <div class="text-xs text-gray-600 mb-1 font-medium">${name}</div>
                     <div class="px-4 py-3 bg-white rounded-2xl rounded-tl-sm shadow-sm border">
                         <p class="text-sm text-gray-800 leading-relaxed">${message.content}</p>
                     </div>
@@ -661,7 +669,6 @@ function createMessageBubble(message) {
             </div>
         `;
     }
-    return '';
 }
 
 function getAvatarColor(roleId) {
