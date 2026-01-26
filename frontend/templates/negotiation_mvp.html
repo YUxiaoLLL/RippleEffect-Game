@@ -284,6 +284,16 @@
 </div>
 
 <script>
+// --- Constants ---
+const V0_CONCERNS = {
+    'council_planner': "Final confirmation of 'activation legitimacy'.",
+    'resident_homeowner': "Which zone activation disturbs daily life the least?",
+    'developer': "Which zone activation brings maximum early return?",
+    'community_activist': "Which zone activation poses the greatest risk?",
+    'potential_buyer': "Which zone activation maximizes property value?",
+    'urban_designer': "Which zone activation maximizes future design potential?"
+};
+
 // --- v0 Logic: Game Brief ---
 function closeBrief() {
     document.getElementById('gameBriefModal').classList.add('hidden');
