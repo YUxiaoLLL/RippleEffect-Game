@@ -204,8 +204,12 @@
         <div class="space-y-4 text-sm font-inter text-gray-700 h-[60vh] overflow-y-auto pr-2">
             <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
                 <strong class="block text-blue-800 mb-1">🎯 The Goal</strong>
-                <p>Only <strong>ONE</strong> construction team is available.</p>
-                <p>We must decide which zone gets activated <strong>FIRST</strong>: <span class="text-orange-600 font-bold">A1</span>, <span class="text-blue-600 font-bold">A2</span>, or <span class="text-green-600 font-bold">K1</span>.</p>
+                <p class="mb-2">Only <strong>ONE</strong> construction team is available. We must decide which zone gets activated <strong>FIRST</strong>:</p>
+                <ul class="list-disc list-inside space-y-1 ml-1">
+                    <li><span class="text-orange-600 font-bold">A1</span>: High-end commercial area</li>
+                    <li><span class="text-blue-600 font-bold">A2</span>: High-end residential area</li>
+                    <li><span class="text-green-600 font-bold">K1</span>: Councilor/Affordable House</li>
+                </ul>
             </div>
 
             <div>
@@ -215,11 +219,6 @@
                     <li><strong>Mark:</strong> Place your intent marker on a zone.</li>
                     <li><strong>Vote:</strong> Confirm your choice to lock it in.</li>
                 </ol>
-            </div>
-
-            <div class="bg-red-50 p-3 rounded-lg border border-red-100">
-                <strong class="block text-red-800 mb-1">⚠️ The Rule</strong>
-                <p>Once a zone is activated, it is <strong>LOCKED</strong> and becomes reality. No going back.</p>
             </div>
 
             <div>
@@ -285,6 +284,20 @@
 </div>
 
 <script>
+// --- v0 Logic: Game Brief ---
+function closeBrief() {
+    document.getElementById('gameBriefModal').classList.add('hidden');
+    // Show controls hint briefly
+    const hint = document.getElementById('controlsHint');
+    if (hint) {
+        hint.classList.remove('hidden');
+        setTimeout(() => {
+            hint.classList.add('opacity-0');
+            setTimeout(() => hint.classList.add('hidden'), 500);
+        }, 10000); // 10 seconds
+    }
+}
+
 // Application State
 let state = {
     currentRound: 1,

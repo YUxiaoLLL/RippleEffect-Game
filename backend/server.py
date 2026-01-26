@@ -271,7 +271,26 @@ def _get_public_room_state(room_id):
         result['currentSpeaker'] = game_state.get('current_speaker')
         result['roundIndex'] = (game_state.get('negotiation_state') or {}).get('round', 1)
         result['characters'] = game_state.get('characters', [])
-        result['history'] = (game_state.get('negotiation_state') or {}).get('history', [])
+        
+        # Format history into messages for frontend polling
+        negotiation_state = game_state.get('negotiation_state') or {}
+        history = negotiation_state.get('history', [])
+        history_meta = negotiation_state.get('history_meta', [])
+        current_round_dialogue = negotiation_state.get('current_round_dialogue') or {}
+        current_round_meta = negotiation_state.get('current_round_meta') or {}
+        
+        combined_history = history
+        combined_meta = history_meta
+        if current_round_dialogue:
+            combined_history = history + [current_round_dialogue]
+            combined_meta = history_meta + [current_round_meta]
+            
+        result['messages'] = format_history_as_messages(
+            combined_history,
+            current_user_id=None, # Public view doesn't differentiate "me" vs others in bubble side, handled by frontend ID check
+            meta_history=combined_meta,
+            characters=game_state.get('characters', [])
+        )
     return result
 
 # --- Game Constants ---
