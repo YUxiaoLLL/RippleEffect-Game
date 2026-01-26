@@ -271,6 +271,7 @@ def _get_public_room_state(room_id):
         result['currentSpeaker'] = game_state.get('current_speaker')
         result['roundIndex'] = (game_state.get('negotiation_state') or {}).get('round', 1)
         result['characters'] = game_state.get('characters', [])
+        result['stakeholders'] = result['characters'] # Alias for frontend compatibility
         
         # Format history into messages for frontend polling
         negotiation_state = game_state.get('negotiation_state') or {}
