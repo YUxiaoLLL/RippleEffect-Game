@@ -3043,6 +3043,7 @@ def send_message(room_id):
     player_id = payload.get('playerId') or session.get('player_id')
     text = payload.get('text', '').strip()
     intent = payload.get('intent') # v0: Explicit Intent Marker
+    influence_action = payload.get('influenceAction')
 
     if not player_id:
         return jsonify({'error': 'Player ID required.'}), 400
@@ -3075,7 +3076,8 @@ def send_message(room_id):
         'zone_id': zid,
         'issue_tag': negotiation_state.get('active_issue_tag'),
         'role_id': (me or {}).get('role_id'),
-        'intent': intent # Store intent
+        'intent': intent,
+        'influence_action': influence_action
     }
 
     # M2: Log Event
@@ -3083,7 +3085,7 @@ def send_message(room_id):
         room_id, 
         player_id, 
         'MESSAGE_SENT', 
-        payload={'text': text, 'zone': zid, 'intent': intent}, 
+        payload={'text': text, 'zone': zid, 'intent': intent, 'influenceAction': influence_action}, 
         role=(me or {}).get('role_id'), 
         round_idx=negotiation_state.get('round'), 
         turn_idx=game_state.get('turn_index')

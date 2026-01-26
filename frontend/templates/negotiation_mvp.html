@@ -173,34 +173,32 @@
         <div id="turnInputUI" class="flex flex-col gap-3">
 
             <div id="stepHint" class="mx-1 px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800"></div>
-            
-            <!-- Zone Intent Selection -->
-            <div class="flex gap-2 justify-center">
-                <button onclick="selectZone('A1')" id="btn-A1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors" data-zone="A1">
-                    A1
-                </button>
-                <button onclick="selectZone('A2')" id="btn-A2" class="zone-btn flex-1 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors" data-zone="A2">
-                    A2
-                </button>
-                <button onclick="selectZone('K1')" id="btn-K1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors" data-zone="K1">
-                    K1
-                </button>
+
+            <div id="statementModeRow" class="flex gap-2 justify-center">
+                <button id="action-gentle" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Gentle Persuade (2 Tokens)</button>
+                <button id="action-pressure" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Pressure (4 Tokens)</button>
             </div>
 
-            <div class="text-[11px] text-gray-600 px-2 text-center">Select the zone you currently support. You can change it before you submit.</div>
+            <div id="intentModeRow" class="hidden">
+                <div class="flex gap-2 justify-center">
+                    <button onclick="selectZone('A1')" id="btn-A1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors" data-zone="A1">A1</button>
+                    <button onclick="selectZone('A2')" id="btn-A2" class="zone-btn flex-1 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors" data-zone="A2">A2</button>
+                    <button onclick="selectZone('K1')" id="btn-K1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors" data-zone="K1">K1</button>
+                </div>
+                <div class="text-[11px] text-gray-600 px-2 text-center">Select the zone you currently support.</div>
+            </div>
 
-            <!-- Input & Submit -->
-            <div class="flex gap-2">
+            <div id="inputModeRow" class="flex gap-2">
                 <input 
                     type="text" 
                     id="messageInput" 
                     placeholder="Type your proposal..."
                     class="flex-1 px-4 py-3 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-inter"
                 />
-                <button id="sendBtn" onclick="submitTurn()" class="px-6 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    SUBMIT
-                </button>
+                <button id="sendBtn" onclick="submitTurn()" class="px-6 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">SUBMIT</button>
             </div>
+
+            <div id="waitingModeRow" class="hidden mx-1 px-3 py-4 rounded-xl bg-gray-50 border border-gray-200 text-sm font-medium text-gray-700 text-center">Please read, think about others’ conversations, and prepare for your next round.</div>
         </div>
     </div>
 </div>
@@ -382,7 +380,10 @@ let state = {
     turnOrder: [],
     currentSpeaker: null,
     turnIndex: 0,
-    hasSubmitted: false
+    hasSubmitted: false,
+    turnPhase: 'waiting',
+    selectedInfluenceAction: null,
+    statementDraft: ''
 };
 
 let pollIntervalId = null;
@@ -533,34 +534,73 @@ function updateTurnControls() {
     const sendBtn = document.getElementById('sendBtn');
     const zoneBtns = document.querySelectorAll('.zone-btn');
     const stepHint = document.getElementById('stepHint');
+    const statementModeRow = document.getElementById('statementModeRow');
+    const intentModeRow = document.getElementById('intentModeRow');
+    const inputModeRow = document.getElementById('inputModeRow');
+    const waitingModeRow = document.getElementById('waitingModeRow');
+    const actionGentle = document.getElementById('action-gentle');
+    const actionPressure = document.getElementById('action-pressure');
     
     if (isMyTurn) {
+        if (!state.turnPhase || state.turnPhase === 'waiting') {
+            state.turnPhase = 'statement';
+            state.selectedInfluenceAction = state.selectedInfluenceAction || 'gentle_persuasion';
+            state.statementDraft = '';
+            state.selectedIntentZone = null;
+            selectZone(null);
+        }
+
+        if (statementModeRow) statementModeRow.classList.toggle('hidden', state.turnPhase !== 'statement');
+        if (intentModeRow) intentModeRow.classList.toggle('hidden', state.turnPhase !== 'intent');
+        if (inputModeRow) inputModeRow.classList.toggle('hidden', state.turnPhase === 'waiting');
+        if (waitingModeRow) waitingModeRow.classList.add('hidden');
+
+        if (actionGentle && actionPressure) {
+            const selected = state.selectedInfluenceAction || 'gentle_persuasion';
+            const gentleOn = selected === 'gentle_persuasion';
+            const pressureOn = selected === 'pressure_opponent';
+            actionGentle.classList.toggle('bg-gray-900', gentleOn);
+            actionGentle.classList.toggle('text-white', gentleOn);
+            actionPressure.classList.toggle('bg-gray-900', pressureOn);
+            actionPressure.classList.toggle('text-white', pressureOn);
+        }
+
         input.disabled = false;
-        input.placeholder = "It's your turn! State your proposal...";
+        input.placeholder = state.turnPhase === 'statement' ? "Type your proposal..." : "";
         sendBtn.disabled = false;
-        sendBtn.textContent = "SUBMIT";
+        sendBtn.textContent = state.turnPhase === 'statement' ? 'NEXT' : 'SUBMIT';
         sendBtn.classList.remove('bg-gray-400');
         sendBtn.classList.add('bg-gray-800', 'hover:bg-black');
         
         zoneBtns.forEach(btn => {
-            btn.disabled = false;
-            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            const enabled = state.turnPhase === 'intent';
+            btn.disabled = !enabled;
+            btn.classList.toggle('opacity-50', !enabled);
+            btn.classList.toggle('cursor-not-allowed', !enabled);
         });
 
         const currentText = (input && input.value ? input.value.trim() : '');
         const hasText = Boolean(currentText);
         const hasZone = Boolean(state.selectedIntentZone);
         if (stepHint) {
-            if (!hasText) {
-                stepHint.textContent = 'Step 1 / 3 — Make a statement (1–2 sentences)';
-            } else if (!hasZone) {
-                stepHint.textContent = 'Step 2 / 3 — Place your intent marker (choose a zone)';
-            } else {
-                stepHint.textContent = 'Step 3 / 3 — Submit your turn';
-            }
+            if (state.turnPhase === 'statement') stepHint.textContent = 'Step 1 / 3 — Choose how to speak + write your statement';
+            if (state.turnPhase === 'intent') stepHint.textContent = 'Step 2 / 3 — Place your intent marker (choose a zone)';
+        }
+
+        if (state.turnPhase === 'statement') {
+            sendBtn.disabled = !hasText;
+        }
+        if (state.turnPhase === 'intent') {
+            sendBtn.disabled = !hasZone;
         }
     } else {
         const currentSpeakerName = state.stakeholders.find(s => s.id === state.currentSpeaker)?.name || "AI";
+
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.remove('hidden');
+
         input.disabled = true;
         input.placeholder = `Waiting for ${currentSpeakerName}...`;
         sendBtn.disabled = true;
@@ -582,6 +622,7 @@ function updateTurnControls() {
 // --- Interaction ---
 function selectZone(zone) {
     if (state.currentSpeaker !== state.myPlayerId) return;
+    if (state.turnPhase !== 'intent') return;
 
     state.selectedIntentZone = zone;
     
@@ -610,7 +651,22 @@ function selectZone(zone) {
 
 async function submitTurn() {
     const messageInput = document.getElementById('messageInput');
-    const text = messageInput.value.trim();
+    const textNow = messageInput.value.trim();
+
+    if (state.currentSpeaker !== state.myPlayerId) return;
+
+    if (state.turnPhase === 'statement') {
+        if (!textNow) {
+            alert("Please write your argument first.");
+            return;
+        }
+        state.statementDraft = textNow;
+        state.turnPhase = 'intent';
+        updateTurnControls();
+        return;
+    }
+
+    const text = (state.statementDraft || textNow).trim();
     const intent = state.selectedIntentZone;
 
     if (!text) {
@@ -640,7 +696,8 @@ async function submitTurn() {
             body = JSON.stringify({
                 playerId: state.myPlayerId,
                 text: text,
-                intent: intent
+                intent: intent,
+                influenceAction: state.selectedInfluenceAction || null
             });
             headers = { 'Content-Type': 'application/json' };
         }
@@ -648,6 +705,9 @@ async function submitTurn() {
         const res = await fetch(url, { method: 'POST', headers, body });
         if (res.ok) {
             state.hasSubmitted = true;
+            state.turnPhase = 'waiting';
+            state.statementDraft = '';
+            state.selectedInfluenceAction = null;
             // Reset UI
             messageInput.value = '';
             state.selectedIntentZone = null;
@@ -684,10 +744,24 @@ window.addEventListener('message', (event) => {
     if (event.data.type === 'ZONE_CLICK') {
         const zone = event.data.zone;
         openZoneInfo(zone);
-        if (state.currentSpeaker === state.myPlayerId) {
+        if (state.currentSpeaker === state.myPlayerId && state.turnPhase === 'intent') {
             selectZone(zone);
         }
     }
+});
+
+document.getElementById('action-gentle').addEventListener('click', () => {
+    if (state.currentSpeaker !== state.myPlayerId) return;
+    if (state.turnPhase !== 'statement') return;
+    state.selectedInfluenceAction = 'gentle_persuasion';
+    updateTurnControls();
+});
+
+document.getElementById('action-pressure').addEventListener('click', () => {
+    if (state.currentSpeaker !== state.myPlayerId) return;
+    if (state.turnPhase !== 'statement') return;
+    state.selectedInfluenceAction = 'pressure_opponent';
+    updateTurnControls();
 });
 
 document.getElementById('zoneInfoOverlay').addEventListener('click', closeZoneInfo);
