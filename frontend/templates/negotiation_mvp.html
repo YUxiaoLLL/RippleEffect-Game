@@ -206,9 +206,9 @@
                 <strong class="block text-blue-800 mb-1">🎯 The Goal</strong>
                 <p class="mb-2">Only <strong>ONE</strong> construction team is available. We must decide which zone gets activated <strong>FIRST</strong>:</p>
                 <ul class="list-disc list-inside space-y-1 ml-1">
-                    <li><span class="text-orange-600 font-bold">A1</span>: High-end commercial area</li>
-                    <li><span class="text-blue-600 font-bold">A2</span>: High-end residential area</li>
-                    <li><span class="text-green-600 font-bold">K1</span>: Councilor/Affordable House</li>
+                    <li><span class="text-orange-600 font-bold">A1</span> (High-end commercial area)</li>
+                    <li><span class="text-blue-600 font-bold">A2</span> (High-end residential area)</li>
+                    <li><span class="text-green-600 font-bold">K1</span> (Councilor/Affordable House)</li>
                 </ul>
             </div>
 
@@ -307,6 +307,7 @@ function closeBrief() {
         }, 10000); // 10 seconds
     }
 }
+window.closeBrief = closeBrief;
 
 // Application State
 let state = {
@@ -327,6 +328,8 @@ let state = {
     turnIndex: 0
 };
 
+let pollIntervalId = null;
+
 // Fetch initial data from Flask backend
 async function initializeNegotiation() {
     try {
@@ -334,6 +337,10 @@ async function initializeNegotiation() {
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
+
+            if (!Array.isArray(state.messages)) state.messages = [];
+            if (!Array.isArray(state.stakeholders)) state.stakeholders = [];
+            if (!Array.isArray(state.turnOrder)) state.turnOrder = [];
             
             // Extract roomId/playerId from URL if not in state
             const urlParams = new URLSearchParams(window.location.search);
@@ -365,24 +372,31 @@ async function initializeNegotiation() {
     }
 }
 
-function startPolling() {
-    setInterval(async () => {
-        if (!state.roomId) return;
-        try {
-            const res = await fetch(`/api/rooms/${state.roomId}/state`);
-            if (res.ok) {
-                const data = await res.json();
-                // Check if turn advanced
-                const newMsgCount = data.messages ? data.messages.length : 0;
-                if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== state.messages.length) {
-                    state = { ...state, ...data };
-                    renderUI();
-                }
-            }
-        } catch (e) {
-            console.error("Poll error", e);
+async function pollOnce() {
+    if (!state.roomId) return;
+    try {
+        const res = await fetch(`/api/rooms/${state.roomId}/state`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const incomingMessages = Array.isArray(data.messages) ? data.messages : null;
+
+        const currentMessages = Array.isArray(state.messages) ? state.messages : [];
+        const newMsgCount = incomingMessages ? incomingMessages.length : currentMessages.length;
+
+        if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== currentMessages.length) {
+            state = { ...state, ...data };
+            if (!Array.isArray(state.messages)) state.messages = currentMessages;
+            renderUI();
         }
-    }, 2000);
+    } catch (e) {
+        console.error('Poll error', e);
+    }
+}
+
+function startPolling() {
+    if (pollIntervalId) return;
+    pollIntervalId = setInterval(pollOnce, 2000);
 }
 
 function renderUI() {
@@ -535,8 +549,7 @@ async function submitTurn() {
                     renderUI();
                 }
             } else {
-                // Multiplayer: Poll immediately
-                startPolling(); 
+                await pollOnce();
             }
         } else {
             const err = await res.json();
@@ -549,6 +562,9 @@ async function submitTurn() {
         // Button state will be handled by updateTurnControls on next render
     }
 }
+window.selectZone = selectZone;
+window.submitTurn = submitTurn;
+window.showStakeholderProfile = showStakeholderProfile;
 
 // --- v0 Logic: Participant Panel ---
 function renderParticipants() {
