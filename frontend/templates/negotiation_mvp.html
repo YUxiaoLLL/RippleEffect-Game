@@ -633,7 +633,9 @@ function renderMessages() {
 
 function createMessageBubble(message) {
     // Check if it's strictly ME
-    const isMe = message.stakeholderId === state.myPlayerId;
+    // In single player (!state.roomId), any 'player' sender is me.
+    // In multiplayer, must match ID.
+    const isMe = message.stakeholderId === state.myPlayerId || (!state.roomId && message.sender === 'player');
     
     if (isMe) {
         return `

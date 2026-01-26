@@ -1392,6 +1392,7 @@ def get_negotiation_state():
         'activeZoneId': active_zone_id,
         'activeIssueTag': active_issue_tag,
         'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
+        'myPlayerId': (session.get('player_profile') or {}).get('id'), # Ensure frontend knows "me"
     })
 
 def format_history_as_messages(history, current_user_id=None, meta_history=None, characters=None):
