@@ -363,7 +363,8 @@ function startPolling() {
             if (res.ok) {
                 const data = await res.json();
                 // Check if turn advanced
-                if (data.currentSpeaker !== state.currentSpeaker || data.messages.length !== state.messages.length) {
+                const newMsgCount = data.messages ? data.messages.length : 0;
+                if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== state.messages.length) {
                     state = { ...state, ...data };
                     renderUI();
                 }
