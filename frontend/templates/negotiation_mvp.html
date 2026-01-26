@@ -149,6 +149,11 @@
 
     <!-- Turn Action Bar (Single Step) -->
     <div class="px-4 py-4 bg-white z-20 safe-area-bottom border-t border-gray-100">
+        <div class="mb-3 mx-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Goal</div>
+            <div class="text-xs text-gray-700">Decide which zone activates first.</div>
+            <div class="mt-1 text-[10px] text-gray-500">Each round: Statement → Intent marker → Submit</div>
+        </div>
         <!-- Turn Info & Order -->
         <div class="flex justify-between items-center mb-3 px-2">
             <div class="flex flex-col">
@@ -166,6 +171,8 @@
 
         <!-- Single Step UI -->
         <div id="turnInputUI" class="flex flex-col gap-3">
+
+            <div id="stepHint" class="mx-1 px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800"></div>
             
             <!-- Zone Intent Selection -->
             <div class="flex gap-2 justify-center">
@@ -179,6 +186,8 @@
                     K1
                 </button>
             </div>
+
+            <div class="text-[11px] text-gray-600 px-2 text-center">Select the zone you currently support. You can change it before you submit.</div>
 
             <!-- Input & Submit -->
             <div class="flex gap-2">
@@ -213,6 +222,16 @@
             </div>
 
             <div>
+                <strong class="block text-gray-900 mb-1">How to Play</strong>
+                <p>You will play a specific role. Each round, read others’ viewpoints, state your position, and use your statement and intent marker to steer the discussion toward the zone you support.</p>
+            </div>
+
+            <div>
+                <strong class="block text-gray-900 mb-1">How to Win</strong>
+                <p>At the end of the game, if the zone you supported receives the most votes in the final vote, you win the match.</p>
+            </div>
+
+            <div>
                 <strong class="block text-gray-900 mb-1">📝 Your Turn (1.5 min limit)</strong>
                 <ol class="list-decimal list-inside space-y-1 text-gray-600 pl-1">
                     <li><strong>Propose:</strong> Write 1-2 sentences.</li>
@@ -223,7 +242,7 @@
 
             <div>
                 <strong class="block text-gray-900 mb-1">🏁 Outcome</strong>
-                <p>5 Rounds total. The zone with the most support wins.</p>
+                <p>5 rounds total. At the end, the zone with the most votes wins.</p>
             </div>
         </div>
 
@@ -325,7 +344,8 @@ let state = {
     currentDialogue: {},
     turnOrder: [],
     currentSpeaker: null,
-    turnIndex: 0
+    turnIndex: 0,
+    hasSubmitted: false
 };
 
 let pollIntervalId = null;
@@ -375,6 +395,7 @@ async function initializeNegotiation() {
 async function pollOnce() {
     if (!state.roomId) return;
     try {
+        const prevSpeaker = state.currentSpeaker;
         const res = await fetch(`/api/rooms/${state.roomId}/state`);
         if (!res.ok) return;
 
@@ -387,6 +408,9 @@ async function pollOnce() {
         if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== currentMessages.length) {
             state = { ...state, ...data };
             if (!Array.isArray(state.messages)) state.messages = currentMessages;
+            if (prevSpeaker !== data.currentSpeaker && data.currentSpeaker === state.myPlayerId) {
+                state.hasSubmitted = false;
+            }
             renderUI();
         }
     } catch (e) {
@@ -441,6 +465,7 @@ function updateTurnControls() {
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const zoneBtns = document.querySelectorAll('.zone-btn');
+    const stepHint = document.getElementById('stepHint');
     
     if (isMyTurn) {
         input.disabled = false;
@@ -454,12 +479,25 @@ function updateTurnControls() {
             btn.disabled = false;
             btn.classList.remove('opacity-50', 'cursor-not-allowed');
         });
+
+        const currentText = (input && input.value ? input.value.trim() : '');
+        const hasText = Boolean(currentText);
+        const hasZone = Boolean(state.selectedIntentZone);
+        if (stepHint) {
+            if (!hasText) {
+                stepHint.textContent = 'Step 1 / 3 — Make a statement (1–2 sentences)';
+            } else if (!hasZone) {
+                stepHint.textContent = 'Step 2 / 3 — Place your intent marker (choose a zone)';
+            } else {
+                stepHint.textContent = 'Step 3 / 3 — Submit your turn';
+            }
+        }
     } else {
         const currentSpeakerName = state.stakeholders.find(s => s.id === state.currentSpeaker)?.name || "AI";
         input.disabled = true;
         input.placeholder = `Waiting for ${currentSpeakerName}...`;
         sendBtn.disabled = true;
-        sendBtn.textContent = "WAIT";
+        sendBtn.textContent = state.hasSubmitted ? 'TURN COMPLETE' : 'WAITING FOR OTHERS';
         sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
         sendBtn.classList.add('bg-gray-400');
         
@@ -467,6 +505,10 @@ function updateTurnControls() {
             btn.disabled = true;
             btn.classList.add('opacity-50', 'cursor-not-allowed');
         });
+
+        if (stepHint) {
+            stepHint.textContent = state.hasSubmitted ? 'Turn complete — waiting for others' : 'Waiting for the current speaker';
+        }
     }
 }
 
@@ -478,7 +520,7 @@ function selectZone(zone) {
     
     // Highlight 3D
     const iframe = document.getElementById('threeFrame');
-    if (iframe && iframe.contentWindow) {
+    if (zone && iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zone }, '*');
     }
     
@@ -495,6 +537,8 @@ function selectZone(zone) {
             btn.classList.remove('ring-2', 'ring-offset-1', 'bg-opacity-20', 'bg-orange-100', 'bg-blue-100', 'bg-green-100');
         }
     });
+
+    updateTurnControls();
 }
 
 async function submitTurn() {
@@ -536,6 +580,7 @@ async function submitTurn() {
 
         const res = await fetch(url, { method: 'POST', headers, body });
         if (res.ok) {
+            state.hasSubmitted = true;
             // Reset UI
             messageInput.value = '';
             state.selectedIntentZone = null;
@@ -551,6 +596,7 @@ async function submitTurn() {
             } else {
                 await pollOnce();
             }
+            updateTurnControls();
         } else {
             const err = await res.json();
             alert("Error: " + (err.message || "Failed to submit turn."));
@@ -754,9 +800,9 @@ function showStakeholderProfile(stakeholderId) {
             <!-- Concern (Red) -->
             <div class="bg-red-50 rounded-xl p-4 border border-red-100">
                 <h3 class="font-bold text-red-900 mb-2 flex items-center gap-2 text-sm uppercase tracking-wider">
-                    <span>🎯</span> Primary Concern
+                    <span>🎯</span> Your focus this game
                 </h3>
-                <p class="text-base font-medium text-red-800 italic">"${concern}"</p>
+                <p class="text-base font-medium text-red-800 italic">${concern}</p>
             </div>
 
             <!-- Power (Blue) -->
@@ -824,6 +870,10 @@ document.getElementById('messageInput').addEventListener('keypress', (e) => {
             submitTurn();
         }
     }
+});
+
+document.getElementById('messageInput').addEventListener('input', () => {
+    updateTurnControls();
 });
 
 // Initialize on load
