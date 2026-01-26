@@ -147,55 +147,48 @@
 
 <!-- Removed Quick Actions for v0 -->
 
-    <!-- Turn Action Bar (Replaces Input Bar) -->
+    <!-- Turn Action Bar (Single Step) -->
     <div class="px-4 py-4 bg-white z-20 safe-area-bottom border-t border-gray-100">
-        <!-- Turn Progress -->
-        <div id="turnProgress" class="flex justify-between items-center mb-3 px-2">
-            <div class="flex gap-2 items-center">
-                <span class="text-xs font-bold text-gray-500">TURN STEPS:</span>
-                <span id="step1Indicator" class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold transition-colors">1</span>
-                <div class="w-8 h-0.5 bg-gray-200"></div>
-                <span id="step2Indicator" class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors">2</span>
-                <div class="w-8 h-0.5 bg-gray-200"></div>
-                <span id="step3Indicator" class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors">3</span>
+        <!-- Turn Info & Order -->
+        <div class="flex justify-between items-center mb-3 px-2">
+            <div class="flex flex-col">
+                <div class="text-xs font-bold text-gray-500 mb-1">TURN ORDER:</div>
+                <div id="turnOrderDisplay" class="flex items-center gap-2 overflow-x-auto max-w-[200px] no-scrollbar">
+                    <!-- Populated by JS -->
+                    <span class="text-xs text-gray-400 italic">Loading...</span>
+                </div>
             </div>
-            <div class="text-xs font-mono text-red-500 font-bold" id="turnTimer">01:30</div>
+            <div class="flex flex-col items-end">
+                <span class="text-xs font-bold text-gray-500">TIME:</span>
+                <div class="text-sm font-mono text-red-500 font-bold" id="turnTimer">01:30</div>
+            </div>
         </div>
 
-        <!-- Step 1: Statement -->
-        <div id="step1UI" class="block">
+        <!-- Single Step UI -->
+        <div id="turnInputUI" class="flex flex-col gap-3">
+            
+            <!-- Zone Intent Selection -->
+            <div class="flex gap-2 justify-center">
+                <button onclick="selectZone('A1')" id="btn-A1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors" data-zone="A1">
+                    A1
+                </button>
+                <button onclick="selectZone('A2')" id="btn-A2" class="zone-btn flex-1 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors" data-zone="A2">
+                    A2
+                </button>
+                <button onclick="selectZone('K1')" id="btn-K1" class="zone-btn flex-1 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors" data-zone="K1">
+                    K1
+                </button>
+            </div>
+
+            <!-- Input & Submit -->
             <div class="flex gap-2">
                 <input 
                     type="text" 
                     id="messageInput" 
-                    placeholder="Step 1: State your opinion (Why?)"
+                    placeholder="Type your proposal..."
                     class="flex-1 px-4 py-3 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-inter"
                 />
-                <button onclick="nextStep(2)" class="px-4 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">NEXT</button>
-            </div>
-        </div>
-
-        <!-- Step 2: Intent Marker -->
-        <div id="step2UI" class="hidden">
-            <div class="flex flex-col gap-2">
-                <div class="text-xs text-gray-500 font-medium text-center">Step 2: Place your Intent Marker</div>
-                <div class="flex gap-2 justify-center">
-                    <button onclick="selectZone('A1')" id="btn-A1" class="zone-btn w-16 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors" data-zone="A1">A1</button>
-                    <button onclick="selectZone('A2')" id="btn-A2" class="zone-btn w-16 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors" data-zone="A2">A2</button>
-                    <button onclick="selectZone('K1')" id="btn-K1" class="zone-btn w-16 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors" data-zone="K1">K1</button>
-                </div>
-                <button onclick="nextStep(3)" id="confirmMarkerBtn" class="w-full py-2 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>CONFIRM MARKER</button>
-            </div>
-        </div>
-
-        <!-- Step 3: Vote/Send -->
-        <div id="step3UI" class="hidden">
-            <div class="flex gap-2">
-                <div class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 flex items-center justify-between">
-                    <span>Ready to submit?</span>
-                    <span id="summaryTag" class="font-bold text-blue-600">A1</span>
-                </div>
-                <button id="sendBtn" onclick="submitTurn()" class="px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md">
+                <button id="sendBtn" onclick="submitTurn()" class="px-6 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     SUBMIT
                 </button>
             </div>
@@ -295,6 +288,7 @@
 // Application State
 let state = {
     currentRound: 1,
+    maxRounds: 5,
     messages: [],
     stakeholders: [],
     playerProfile: null,
@@ -303,9 +297,11 @@ let state = {
     is3DExpanded: false,
     roomId: null,
     myPlayerId: null,
-    tempStatement: null,
     selectedIntentZone: null,
-    currentDialogue: {} // Track who spoke this round
+    currentDialogue: {},
+    turnOrder: [],
+    currentSpeaker: null,
+    turnIndex: 0
 };
 
 // Fetch initial data from Flask backend
@@ -321,7 +317,7 @@ async function initializeNegotiation() {
             if (!state.roomId) state.roomId = urlParams.get('roomId');
             if (!state.myPlayerId) state.myPlayerId = urlParams.get('playerId') || localStorage.getItem('ripple_player_id');
 
-            // Initialize 3D View with Context
+            // Initialize 3D View
             const iframe = document.getElementById('threeFrame');
             const fullscreenFrame = document.getElementById('fullscreenFrame');
             
@@ -330,57 +326,116 @@ async function initializeNegotiation() {
                 if (iframe) iframe.src = src;
                 if (fullscreenFrame) fullscreenFrame.src = src;
             } else {
-                 // Fallback
                  if (iframe) iframe.src = "/3d/";
                  if (fullscreenFrame) fullscreenFrame.src = "/3d/";
             }
 
             renderUI();
+            
+            // Start polling if multiplayer
+            if (state.roomId) {
+                startPolling();
+            }
         }
     } catch (error) {
         console.error('Failed to initialize:', error);
-        initializeMockData();
     }
 }
 
-function initializeMockData() {
-    // Mock stakeholders matching your Flask backend structure
-    try {
-        state.stakeholders = {{ characters | tojson | safe }};
-        state.playerProfile = {{ player_profile | tojson | safe }};
-        state.currentRound = {{ state.round | default(1) }};
-        state.climateScore = {{ climate_score | default(50) }};
-        
-        renderUI();
-    } catch (error) {
-        console.error('Failed to initialize:', error);
-    }
+function startPolling() {
+    setInterval(async () => {
+        if (!state.roomId) return;
+        try {
+            const res = await fetch(`/api/rooms/${state.roomId}/state`);
+            if (res.ok) {
+                const data = await res.json();
+                // Check if turn advanced
+                if (data.currentSpeaker !== state.currentSpeaker || data.messages.length !== state.messages.length) {
+                    state = { ...state, ...data };
+                    renderUI();
+                }
+            }
+        } catch (e) {
+            console.error("Poll error", e);
+        }
+    }, 2000);
 }
 
 function renderUI() {
     renderImpactBar();
     renderMessages();
     renderParticipants();
-    document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound}`;
+    renderTurnOrder();
+    updateTurnControls();
+    
+    document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound} / ${state.maxRounds}`;
 }
 
-// --- v0 Logic: Game Brief & Controls ---
-function closeBrief() {
-    document.getElementById('gameBriefModal').classList.add('hidden');
-    // Show controls hint briefly
-    const hint = document.getElementById('controlsHint');
-    if (hint) {
-        hint.classList.remove('hidden');
-        setTimeout(() => {
-            hint.classList.add('opacity-0');
-            setTimeout(() => hint.classList.add('hidden'), 500);
-        }, 10000); // 10 seconds
+// --- Turn Order Display ---
+function renderTurnOrder() {
+    const container = document.getElementById('turnOrderDisplay');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    state.turnOrder.forEach((playerId, index) => {
+        const stakeholder = state.stakeholders.find(s => s.id === playerId);
+        if (!stakeholder) return;
+        
+        const isCurrent = playerId === state.currentSpeaker;
+        const isDone = index < state.turnIndex;
+        
+        const div = document.createElement('div');
+        div.className = `flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs border-2 transition-all ${
+            isCurrent ? 'border-yellow-400 scale-110 shadow-md z-10' : 
+            isDone ? 'border-gray-300 opacity-50' : 'border-transparent bg-gray-100'
+        }`;
+        div.style.backgroundColor = isCurrent || !isDone ? getAvatarColor(stakeholder.role_id) : '#e5e7eb';
+        div.textContent = getStakeholderEmoji(stakeholder.role_id);
+        div.title = stakeholder.role_name;
+        
+        container.appendChild(div);
+    });
+}
+
+function updateTurnControls() {
+    const isMyTurn = state.currentSpeaker === state.myPlayerId;
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const zoneBtns = document.querySelectorAll('.zone-btn');
+    
+    if (isMyTurn) {
+        input.disabled = false;
+        input.placeholder = "It's your turn! State your proposal...";
+        sendBtn.disabled = false;
+        sendBtn.textContent = "SUBMIT";
+        sendBtn.classList.remove('bg-gray-400');
+        sendBtn.classList.add('bg-gray-800', 'hover:bg-black');
+        
+        zoneBtns.forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        });
+    } else {
+        const currentSpeakerName = state.stakeholders.find(s => s.id === state.currentSpeaker)?.name || "AI";
+        input.disabled = true;
+        input.placeholder = `Waiting for ${currentSpeakerName}...`;
+        sendBtn.disabled = true;
+        sendBtn.textContent = "WAIT";
+        sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+        sendBtn.classList.add('bg-gray-400');
+        
+        zoneBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
     }
 }
 
-// --- v0 Logic: 3-Step Turn (Simplified to Single Step) ---
-
+// --- Interaction ---
 function selectZone(zone) {
+    if (state.currentSpeaker !== state.myPlayerId) return;
+
     state.selectedIntentZone = zone;
     
     // Highlight 3D
@@ -388,14 +443,26 @@ function selectZone(zone) {
     if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zone }, '*');
     }
+    
+    // Update Buttons UI
+    ['A1', 'A2', 'K1'].forEach(z => {
+        const btn = document.getElementById(`btn-${z}`);
+        if (z === zone) {
+            btn.classList.add('ring-2', 'ring-offset-1', 'bg-opacity-20');
+            // Add specific background tint based on zone color
+            if (z === 'A1') btn.classList.add('bg-orange-100');
+            if (z === 'A2') btn.classList.add('bg-blue-100');
+            if (z === 'K1') btn.classList.add('bg-green-100');
+        } else {
+            btn.classList.remove('ring-2', 'ring-offset-1', 'bg-opacity-20', 'bg-orange-100', 'bg-blue-100', 'bg-green-100');
+        }
+    });
 }
 
 async function submitTurn() {
     const messageInput = document.getElementById('messageInput');
-    const intentSelect = document.getElementById('intentSelect');
-    
     const text = messageInput.value.trim();
-    const intent = intentSelect.value;
+    const intent = state.selectedIntentZone;
 
     if (!text) {
         alert("Please write your argument first.");
@@ -408,7 +475,7 @@ async function submitTurn() {
     
     const sendBtn = document.getElementById('sendBtn');
     sendBtn.disabled = true;
-    sendBtn.innerText = "...";
+    sendBtn.innerText = "SENDING...";
 
     try {
         let url = '/negotiation'; 
@@ -433,8 +500,8 @@ async function submitTurn() {
         if (res.ok) {
             // Reset UI
             messageInput.value = '';
-            intentSelect.value = '';
             state.selectedIntentZone = null;
+            selectZone(null); // Clear selection visuals
             
             // Single player response handling
             if (!state.roomId) {
@@ -443,6 +510,9 @@ async function submitTurn() {
                     state.messages = data.history;
                     renderUI();
                 }
+            } else {
+                // Multiplayer: Poll immediately
+                startPolling(); 
             }
         } else {
             const err = await res.json();
@@ -452,8 +522,7 @@ async function submitTurn() {
         console.error("Submit error", e);
         alert("Failed to send turn.");
     } finally {
-        sendBtn.disabled = false;
-        sendBtn.innerText = "SUBMIT";
+        // Button state will be handled by updateTurnControls on next render
     }
 }
 
@@ -701,7 +770,10 @@ document.getElementById('backBtn').addEventListener('click', () => {
 
 document.getElementById('messageInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-        if (turnStep === 1) nextStep(2);
+        // Optional: Submit if intent is selected
+        if (state.selectedIntentZone) {
+            submitTurn();
+        }
     }
 });
 

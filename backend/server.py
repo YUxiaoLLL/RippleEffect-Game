@@ -2442,12 +2442,17 @@ def create_room():
         return jsonify({'error': 'Server at capacity (max rooms reached).'}), 503
 
     payload = request.get_json(silent=True) or {}
-    host_id = payload.get('hostId')
+    
+    # Fix: Handle both flat and nested config structures
+    if 'maxHumans' in payload or 'aiCount' in payload:
+        config = payload
+        host_id = payload.get('hostId') # Might be None, but handled in join/start
+    else:
+        config = payload.get('config', {})
+        host_id = payload.get('hostId')
     
     # Generate short readable room ID (6 chars)
     room_id = uuid.uuid4().hex[:6].upper()
-    
-    config = payload.get('config', {})
     
     ROOMS[room_id] = {
         'id': room_id,
@@ -2459,7 +2464,7 @@ def create_room():
         'game_state': {} # Stores turn order, history, etc.
     }
     
-    # M2: Log Event (Fix: Use host_id instead of undefined player_id)
+    # M2: Log Event
     log_event(room_id, host_id, 'ROOM_CREATED', payload=payload)
     
     return jsonify({'roomId': room_id})
@@ -2649,6 +2654,8 @@ def _build_room_game_state(room):
         })
 
     ai_count = int(room.get('config', {}).get('aiCount', 0))
+    print(f"DEBUG: Room {room.get('id')} Config - AI Count: {ai_count}, Max Humans: {room.get('config', {}).get('maxHumans')}")
+    
     ai_id_counter = 0
     
     # Fill remaining slots with AI up to ai_count
