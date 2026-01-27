@@ -1607,7 +1607,7 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
     if zone_prompts:
         round_prompt = zone_prompts[(max(round_no, 1) - 1) % len(zone_prompts)]
     else:
-        round_prompt = "Respond to the player's statement with concrete commitments and a pointed question."
+        round_prompt = "Discuss which zone should start first (A1/A2/K1), based on your role priorities, lived experience, and what you want the future to feel like."
 
     for ai in active_ai_characters:
         # --- 1. PERSONA GENERATION / RETRIEVAL ---
@@ -1669,15 +1669,15 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
             
             speech_constraints = (
                 f"[Round 1 Rules - STRICT]\n"
-                f"1. **NO Executable Terms**: Do not use specific numbers (like '60%', '£18m'), legal statutes, specific years, or finalized agreements.\n"
-                f"2. **Role Depth**: Focus ONLY on these themes: {allowed_topics}.\n"
+                f"1. **NO Numeric Dumping**: Avoid hard numbers (like '118,000', '79', '£18m') unless it is truly necessary to justify a choice.\n"
+                f"2. **Role Depth**: Speak from your identity, lived experience, emotions, and future vision. Use these themes: {allowed_topics}.\n"
                 f"3. **FORBIDDEN topics**: {forbidden_topics}.\n"
-                f"4. **Goal**: Surface concerns, signal red lines, and probe others' priorities. Do NOT propose a full solution yet.\n"
+                f"4. **Goal**: Argue which zone should start first (A1/A2/K1). Surface concerns, signal red lines, and probe others' priorities.\n"
             )
         else:
              speech_constraints = (
                 f"[Round {round_no} Guidance]\n"
-                f"You can now be more specific with numbers and conditions if trust allows.\n"
+                f"You can be more specific if trust allows. Use numbers only when they strengthen a concrete argument about the starting sequence.\n"
             )
 
         # --- NEW: Spatial Grounding (Mandatory) ---
@@ -1685,6 +1685,12 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
         spatial_instruction = (
             f"**Spatial Grounding (MANDATORY)**: You must refer to the physical reality of the site at least once in your response.\n"
             f"   (e.g., mention construction noise, views, shadows, walking paths, specific buildings). Examples: {spatial_examples}.\n"
+        )
+
+        sequence_instruction = (
+            "**Construction Sequence Focus (MANDATORY)**: Keep your response about which zone should start first (A1/A2/K1). "
+            "State your preferred first zone, explain why from your role perspective (feelings, daily impact, hopes), "
+            "and name one condition or reassurance you need. Only mention hard numbers if essential." 
         )
 
         # --- NEW: 50/50 Conflict Dimension Logic ---
@@ -1723,8 +1729,9 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
             f"[Task]\n"
             f"1. {pivot_instruction}\n"
             f"2. {spatial_instruction}\n"
-            f"3. Keep it short (under 50 words). conversational, and 'human'.\n"
-            f"4. **NO LISTS**. Do not use bullet points. Speak in full sentences.\n\n"
+            f"3. {sequence_instruction}\n"
+            f"4. Keep it short (under 50 words). conversational, and 'human'.\n"
+            f"5. **NO LISTS**. Do not use bullet points. Speak in full sentences.\n\n"
             
             f"[Output Format - JSON]\n"
             f"Return a JSON object with keys: 'thought_process', 'dialogue', 'score_delta' (integer -10 to 10), 'animation_trigger' (optional string)."
@@ -1759,8 +1766,8 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
                         "content": (
                             "Rewrite your response to satisfy the Round Focus guidance. "
                             f"Fix these failures: {', '.join(last_errors)}. "
-                            "You must include at least one numeric hard fact keyword from the Zone Context, "
-                            "and you must not drift into other zones unless the player asks."
+                            "Keep it about which zone should start first. "
+                            "Avoid hard numbers unless necessary."
                         )
                     })
 
@@ -1813,8 +1820,10 @@ def get_ai_responses(characters, history, player_statement, climate_score, issue
                     zone_info=zone_info,
                     role_voice_keywords=ROLE_VOICE_KEYWORDS,
                     require_zone_id=False,
+                    require_zone_fact=False,
                     require_role_voice=False,
                     require_question_by_role=False,
+                    allow_other_zones=True,
                 )
                 if not last_errors:
                     break

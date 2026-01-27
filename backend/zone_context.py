@@ -66,8 +66,10 @@ def validate_ai_dialogue(
     zone_info,
     role_voice_keywords,
     require_zone_id=False,
+    require_zone_fact=False,
     require_role_voice=False,
     require_question_by_role=False,
+    allow_other_zones=False,
 ):
     text = (dialogue or '').strip()
     if not text:
@@ -80,7 +82,7 @@ def validate_ai_dialogue(
         errors.append('missing_zone_id')
 
     must_keywords = (zone_info or {}).get('must_mention_keywords') or []
-    if must_keywords:
+    if require_zone_fact and must_keywords:
         hit = False
         for kw in must_keywords:
             if kw and kw in text:
@@ -89,12 +91,13 @@ def validate_ai_dialogue(
         if not hit:
             errors.append('missing_zone_fact')
 
-    for other in ('A1', 'A2', 'K1'):
-        if other == zid:
-            continue
-        if re.search(rf'\b{other}\b', text):
-            errors.append('mentions_other_zone')
-            break
+    if not allow_other_zones:
+        for other in ('A1', 'A2', 'K1'):
+            if other == zid:
+                continue
+            if re.search(rf'\b{other}\b', text):
+                errors.append('mentions_other_zone')
+                break
 
     role = (role_id or '').strip()
     kws = role_voice_keywords.get(role) or []
