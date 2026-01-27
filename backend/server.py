@@ -2542,6 +2542,47 @@ def api_config():
     return jsonify({'isHost': True})
 
 
+@app.route('/api/rooms/active')
+def list_active_rooms():
+    rooms = []
+    try:
+        for rid, room in (ROOMS or {}).items():
+            if not room:
+                continue
+            phase = room.get('phase', 'lobby')
+            config = room.get('config') or {}
+            max_humans = int(config.get('maxHumans', 4) or 4)
+            players = room.get('players', []) or []
+            current_humans = len(players)
+
+            if phase == 'lobby':
+                status = 'Waiting'
+            elif phase == 'inGame':
+                status = 'In Progress'
+            else:
+                status = 'Waiting'
+
+            is_full = current_humans >= max_humans
+
+            rooms.append({
+                'roomId': rid,
+                'status': 'Full' if is_full else status,
+                'phase': phase,
+                'currentPlayers': current_humans,
+                'maxPlayers': max_humans,
+                'createdAt': room.get('createdAt'),
+            })
+    except Exception:
+        rooms = []
+
+    try:
+        rooms.sort(key=lambda r: (0 if r.get('status') == 'Waiting' else 1, 0 if r.get('status') == 'In Progress' else 1, -(r.get('currentPlayers') or 0), -(r.get('createdAt') or 0)))
+    except Exception:
+        pass
+
+    return jsonify({'rooms': rooms})
+
+
 @app.route('/api/rooms', methods=['POST'])
 def create_room():
     # Auto-cleanup stale rooms (> 2 hours)

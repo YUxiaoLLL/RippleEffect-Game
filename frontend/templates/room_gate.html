@@ -26,8 +26,21 @@
             <p class="font-inter text-white/70 text-[14px]">Join or create a room to start.</p>
         </div>
 
+        <!-- Step 1: Human-level choice -->
+        <div id="mode-chooser" class="w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
+            <button id="choose-create" class="w-full text-left bg-black/30 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-all">
+                <div class="font-righteous text-white text-[18px]">Do you want to create your own room?</div>
+                <div class="font-inter text-white/60 text-[12px] mt-1">Host a session and invite others.</div>
+            </button>
+            <div class="text-center font-inter text-white/30 text-[12px]">or</div>
+            <button id="choose-join" class="w-full text-left bg-black/30 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition-all">
+                <div class="font-righteous text-white text-[18px]">Do you want to join a room?</div>
+                <div class="font-inter text-white/60 text-[12px] mt-1">Pick a room like joining a voice channel.</div>
+            </button>
+        </div>
+
         <!-- Create Room Section -->
-        <div id="create-section" class="w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 opacity-50 pointer-events-none transition-all duration-300">
+        <div id="create-section" class="hidden w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 transition-all duration-300">
             <div class="flex justify-between items-center">
                 <h2 class="font-righteous text-[#D97B48] text-[20px]">Host Game</h2>
                 <span id="host-badge" class="hidden text-[10px] bg-[#D97B48] text-white px-2 py-0.5 rounded-full font-inter">YOU ARE HOST</span>
@@ -68,7 +81,7 @@
         </div>
 
         <!-- Join Room Section -->
-        <div class="w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
+        <div id="join-section" class="hidden w-full max-w-[340px] bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
             <h2 class="font-righteous text-[#8b659c] text-[20px]">Join Room</h2>
             
             <input type="text" id="player-name" placeholder="Your Name" class="w-full bg-black/30 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#8b659c] font-inter">
@@ -84,6 +97,15 @@
             <button id="rejoin-btn" class="hidden w-full bg-white/10 border border-white/10 text-white/70 font-inter text-[12px] py-2 rounded-lg hover:bg-white/20 transition-all" onclick="rejoinLastGame()">
                 Rejoin Last Game
             </button>
+
+            <!-- Active Room List -->
+            <div class="mt-2">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="font-inter text-white/60 text-[12px]">Active rooms</div>
+                    <button id="refresh-rooms" class="text-[11px] font-inter text-white/50 hover:text-white">Refresh</button>
+                </div>
+                <div id="room-list" class="flex flex-col gap-2"></div>
+            </div>
             
             <p id="error-msg" class="text-red-400 text-[12px] font-inter text-center min-h-[18px]"></p>
         </div>
@@ -101,6 +123,8 @@
         let config = { maxHumans: 4, aiCount: 3, chapterId: 1 };
         const TOTAL_PLAYERS = 7;
 
+        let selectedMode = null;
+
         async function init() {
             // Update Share Link
             const shareLink = `${window.location.origin}/room_gate`;
@@ -109,17 +133,106 @@
             // Check for previous session
             checkRejoin();
 
+            // Step 1 choice handlers
+            const chooseCreate = document.getElementById('choose-create');
+            const chooseJoin = document.getElementById('choose-join');
+            if (chooseCreate) {
+                chooseCreate.addEventListener('click', () => {
+                    selectedMode = 'create';
+                    showMode();
+                });
+            }
+            if (chooseJoin) {
+                chooseJoin.addEventListener('click', () => {
+                    selectedMode = 'join';
+                    showMode();
+                    loadActiveRooms();
+                });
+            }
+
+            const refreshBtn = document.getElementById('refresh-rooms');
+            if (refreshBtn) refreshBtn.addEventListener('click', loadActiveRooms);
+
             try {
                 const res = await fetch('/api/config');
                 const data = await res.json();
                 if (data.isHost) {
-                    const section = document.getElementById('create-section');
-                    section.classList.remove('opacity-50', 'pointer-events-none');
                     document.getElementById('host-badge').classList.remove('hidden');
                     updateUI();
                 }
             } catch (e) {
                 console.error("Failed to load config", e);
+            }
+        }
+
+        function showMode() {
+            const createSection = document.getElementById('create-section');
+            const joinSection = document.getElementById('join-section');
+            if (createSection) createSection.classList.toggle('hidden', selectedMode !== 'create');
+            if (joinSection) joinSection.classList.toggle('hidden', selectedMode !== 'join');
+        }
+
+        function roomStatusClass(status) {
+            if (status === 'Waiting') return 'bg-green-500/20 text-green-300 border-green-500/30';
+            if (status === 'In Progress') return 'bg-yellow-500/20 text-yellow-200 border-yellow-500/30';
+            return 'bg-white/10 text-white/60 border-white/10';
+        }
+
+        async function loadActiveRooms() {
+            const list = document.getElementById('room-list');
+            if (!list) return;
+            list.innerHTML = `<div class="text-[12px] text-white/40 font-inter">Loading...</div>`;
+
+            try {
+                const res = await fetch('/api/rooms/active');
+                const data = await res.json();
+                const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+                if (!rooms.length) {
+                    list.innerHTML = `<div class="text-[12px] text-white/30 font-inter">No rooms yet. Create one?</div>`;
+                    return;
+                }
+
+                list.innerHTML = '';
+                rooms.forEach(r => {
+                    const roomId = String(r.roomId || '').toUpperCase();
+                    const current = Number(r.currentPlayers || 0);
+                    const max = Number(r.maxPlayers || 0);
+                    const status = r.status || 'Waiting';
+                    const isFull = status === 'Full' || (max && current >= max);
+
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.className = `w-full flex items-center justify-between gap-3 bg-black/30 border border-white/10 rounded-xl px-4 py-3 hover:bg-white/10 transition-all ${isFull ? 'opacity-50 cursor-not-allowed' : ''}`;
+                    row.disabled = isFull;
+
+                    const left = document.createElement('div');
+                    left.className = 'flex flex-col items-start';
+                    left.innerHTML = `
+                        <div class="font-mono text-[12px] text-white tracking-widest">${roomId}</div>
+                        <div class="font-inter text-[11px] text-white/50">${current}/${max}</div>
+                    `;
+
+                    const tag = document.createElement('div');
+                    tag.className = `text-[10px] font-inter px-2 py-1 rounded-full border ${roomStatusClass(status)}`;
+                    tag.textContent = status;
+
+                    row.appendChild(left);
+                    row.appendChild(tag);
+                    row.addEventListener('click', async () => {
+                        const roomInput = document.getElementById('room-id');
+                        if (roomInput) roomInput.value = roomId;
+
+                        const playerName = document.getElementById('player-name').value.trim();
+                        if (playerName) {
+                            localStorage.setItem('ripple_player_name', playerName);
+                            await joinRoomById(roomId, playerName);
+                        }
+                    });
+
+                    list.appendChild(row);
+                });
+            } catch (e) {
+                list.innerHTML = `<div class="text-[12px] text-white/30 font-inter">Failed to load rooms.</div>`;
             }
         }
 
