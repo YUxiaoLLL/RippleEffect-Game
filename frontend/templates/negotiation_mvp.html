@@ -102,16 +102,8 @@
         </button>
     </header>
 
-    <!-- Participant Panel (Left Sidebar) -->
-    <div class="absolute left-0 top-16 bottom-20 w-16 bg-white/90 backdrop-blur z-20 flex flex-col items-center py-4 gap-4 border-r border-gray-200">
-        <div class="text-[10px] font-bold text-gray-400 mb-2 rotate-180" style="writing-mode: vertical-rl;">PARTICIPANTS</div>
-        <div id="participantList" class="flex flex-col gap-3">
-            <!-- Avatars populated by JS -->
-        </div>
-    </div>
-
     <!-- 3D Preview Panel (Adjusted Margin) -->
-    <div id="3dPanel" class="relative ml-[4.5rem] mr-4 mt-2 h-[35vh] bg-neutral-100 rounded-[30px] overflow-hidden shadow-inner border border-gray-200 z-10">
+    <div id="3dPanel" class="relative mx-4 mt-2 h-[24vh] bg-neutral-100 rounded-[30px] overflow-hidden shadow-inner border border-gray-200 z-10">
         <div class="absolute inset-0" id="three-container">
             <iframe 
                 src="" 
@@ -133,29 +125,8 @@
         </div>
     </div>
 
-    <!-- Impact Bar -->
-    <div class="px-6 py-3 z-10">
-        <div class="flex gap-2 justify-center" id="impactBar">
-            <!-- Will be populated dynamically -->
-        </div>
-    </div>
-
-    <!-- Chat Area -->
-    <div id="chatArea" class="flex-1 mx-4 mb-2 overflow-y-auto bg-white/50 backdrop-blur-sm rounded-[30px] border border-gray-100 p-4 shadow-sm z-10">
-        <!-- Messages will be added here -->
-    </div>
-
-<!-- Removed Quick Actions for v0 -->
-
-    <!-- Turn Action Bar (Single Step) -->
-    <div class="px-4 py-4 bg-white z-20 safe-area-bottom border-t border-gray-100">
-        <div class="mb-3 mx-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200">
-            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Goal</div>
-            <div class="text-xs text-gray-700">Decide which zone activates first.</div>
-            <div class="mt-1 text-[10px] text-gray-500">Each round: Statement → Intent marker → Submit</div>
-        </div>
-        <!-- Turn Info & Order -->
-        <div class="flex justify-between items-center mb-3 px-2">
+    <div class="px-4 pt-3 pb-2 z-10">
+        <div class="flex justify-between items-center mb-2 px-2">
             <div class="flex flex-col flex-1 min-w-0">
                 <div class="text-xs font-bold text-gray-500 mb-1">TURN ORDER:</div>
                 <div id="turnOrderDisplay" class="flex items-start gap-3 overflow-x-auto no-scrollbar pr-2">
@@ -169,14 +140,31 @@
             </div>
         </div>
 
+        <div class="mx-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Goal</div>
+            <div class="text-xs text-gray-700">Decide which zone activates first.</div>
+            <div class="mt-1 text-[10px] text-gray-500">Each round: Statement → Intent marker → Submit</div>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chatArea" class="flex-1 mx-4 mb-2 overflow-y-auto bg-white/50 backdrop-blur-sm rounded-[30px] border border-gray-100 p-4 shadow-sm z-10">
+        <!-- Messages will be added here -->
+    </div>
+
+<!-- Removed Quick Actions for v0 -->
+
+    <!-- Turn Action Bar (Single Step) -->
+    <div class="px-4 py-4 bg-white z-20 safe-area-bottom border-t border-gray-100">
         <!-- Single Step UI -->
         <div id="turnInputUI" class="flex flex-col gap-3">
 
             <div id="stepHint" class="mx-1 px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800"></div>
 
-            <div id="statementModeRow" class="flex gap-2 justify-center">
+            <div id="statementModeRow" class="flex gap-2 justify-center items-center">
                 <button id="action-gentle" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Gentle Persuade (2 Tokens)</button>
                 <button id="action-pressure" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Pressure (4 Tokens)</button>
+                <div id="tokenBadge" class="w-10 h-10 rounded-lg border-2 border-gray-800 bg-white flex items-center justify-center text-xs font-bold text-gray-900">0</div>
             </div>
 
             <div id="intentModeRow" class="hidden">
@@ -470,9 +458,7 @@ function startPolling() {
 }
 
 function renderUI() {
-    renderImpactBar();
     renderMessages();
-    renderParticipants();
     renderTurnOrder();
     updateTurnControls();
     
@@ -507,6 +493,8 @@ function renderTurnOrder() {
         icon.style.backgroundColor = isCurrent || !isDone ? getAvatarColor(stakeholder.role_id) : '#e5e7eb';
         icon.textContent = getStakeholderEmoji(stakeholder.role_id);
         icon.title = roleLabel;
+        icon.classList.add('cursor-pointer');
+        icon.onclick = () => showStakeholderProfile(playerId);
 
         const label = document.createElement('div');
         label.className = `mt-1 text-[9px] leading-tight text-gray-600 text-center ${isCurrent ? 'font-bold text-gray-800' : ''}`;
@@ -548,12 +536,18 @@ function updateTurnControls() {
     const waitingModeRow = document.getElementById('waitingModeRow');
     const actionGentle = document.getElementById('action-gentle');
     const actionPressure = document.getElementById('action-pressure');
+    const tokenBadge = document.getElementById('tokenBadge');
 
     if (actionGentle && actionPressure) {
         const gentleCost = (state.influenceCosts && state.influenceCosts.gentle_persuasion != null) ? state.influenceCosts.gentle_persuasion : 2;
         const pressureCost = (state.influenceCosts && state.influenceCosts.pressure_opponent != null) ? state.influenceCosts.pressure_opponent : 4;
         actionGentle.textContent = `Gentle Persuade (${gentleCost} Tokens)`;
         actionPressure.textContent = `Pressure (${pressureCost} Tokens)`;
+    }
+
+    if (tokenBadge) {
+        const tokensNow = (state.playerTokens != null) ? state.playerTokens : ((state.playerProfile || {}).influence_tokens || 0);
+        tokenBadge.textContent = String(tokensNow);
     }
     
     if (isMyTurn) {
@@ -782,46 +776,6 @@ document.getElementById('action-pressure').addEventListener('click', () => {
 document.getElementById('zoneInfoOverlay').addEventListener('click', closeZoneInfo);
 document.getElementById('closeZoneInfo').addEventListener('click', closeZoneInfo);
 
-// --- v0 Logic: Participant Panel ---
-function renderParticipants() {
-    const list = document.getElementById('participantList');
-    if (!list) return;
-    list.innerHTML = '';
-    
-    // Combine AI and Player
-    const all = [...state.stakeholders];
-    if (state.playerProfile && !all.find(p => p.is_player)) {
-        all.push(state.playerProfile);
-    }
-
-    all.forEach(s => {
-        // Determine if they acted this round
-        // We check state.currentDialogue (needs to be populated from backend)
-        // Or check if they have a message in state.messages for this round?
-        // Simpler: Check state.messages for now
-        // TODO: Backend should send 'acted_participants' list
-        
-        const hasActed = state.messages.some(m => 
-            m.sender !== 'player' && 
-            state.stakeholders.find(st => st.id === m.stakeholderId && st.role_id === s.role_id)
-        ) || (s.is_player && state.messages.some(m => m.sender === 'player'));
-
-        const opacity = hasActed ? 'opacity-100' : 'opacity-40 grayscale';
-        const ring = hasActed ? 'ring-2 ring-green-400' : '';
-        
-        const el = document.createElement('div');
-        el.className = `w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg cursor-pointer transition-all ${opacity} ${ring}`;
-        el.style.backgroundColor = getAvatarColor(s.role_id);
-        el.textContent = getStakeholderEmoji(s.role_id);
-        el.onclick = () => showStakeholderProfile(s.id || 'player');
-        
-        // Tooltip
-        el.title = s.name || s.role_name;
-        
-        list.appendChild(el);
-    });
-}
-
 // --- Rendering Helpers ---
 function renderImpactBar() {
     const topStakeholders = state.stakeholders
@@ -830,6 +784,7 @@ function renderImpactBar() {
         .slice(0, 3);
     
     const impactBar = document.getElementById('impactBar');
+    if (!impactBar) return;
     impactBar.innerHTML = topStakeholders.map(stakeholder => {
         const impact = stakeholder.stance_score > 60 ? 
             Math.floor((stakeholder.stance_score - 60) / 10) : 
@@ -937,6 +892,9 @@ function showStakeholderProfile(stakeholderId) {
         stakeholder = state.playerProfile;
     } else {
         stakeholder = state.stakeholders.find(s => s.id === stakeholderId);
+        if (!stakeholder && state.playerProfile && state.playerProfile.id === stakeholderId) {
+            stakeholder = state.playerProfile;
+        }
     }
     
     if (!stakeholder) return;
