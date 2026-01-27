@@ -73,6 +73,14 @@
         #three-container {
             touch-action: pan-x pan-y;
         }
+
+        @keyframes timerBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+        .timer-blink {
+            animation: timerBlink 1s linear infinite;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
@@ -136,7 +144,9 @@
             </div>
             <div class="flex flex-col items-end">
                 <span class="text-xs font-bold text-gray-500">TIME:</span>
-                <div class="text-sm font-mono text-red-500 font-bold" id="turnTimer">01:30</div>
+                <div id="timerBlock" class="flex flex-col items-end">
+                    <div class="text-sm font-mono text-red-500 font-bold" id="turnTimer">01:30</div>
+                </div>
             </div>
         </div>
 
@@ -373,10 +383,14 @@ let state = {
     selectedInfluenceAction: null,
     statementDraft: '',
     influenceCosts: null,
-    playerTokens: null
+    playerTokens: null,
+    turnDeadlineTs: null,
+    turnRemainingSec: null,
+    turnDurationSec: null
 };
 
 let pollIntervalId = null;
+let countdownIntervalId = null;
 
 // Fetch initial data from Flask backend
 async function initializeNegotiation() {
@@ -440,6 +454,9 @@ async function pollOnce() {
             if (!Array.isArray(state.messages)) state.messages = currentMessages;
             if (data && data.influenceCosts) state.influenceCosts = data.influenceCosts;
             if (data && (data.playerTokens != null)) state.playerTokens = data.playerTokens;
+            if (data && (data.turnDeadlineTs != null)) state.turnDeadlineTs = data.turnDeadlineTs;
+            if (data && (data.turnRemainingSec != null)) state.turnRemainingSec = data.turnRemainingSec;
+            if (data && (data.turnDurationSec != null)) state.turnDurationSec = data.turnDurationSec;
 
             if (prevSpeaker && state.currentSpeaker === state.myPlayerId && prevSpeaker !== state.myPlayerId) {
                 state.hasSubmitted = false;
@@ -526,6 +543,7 @@ function closeZoneInfo() {
 
 function updateTurnControls() {
     const isMyTurn = state.currentSpeaker === state.myPlayerId;
+    const isMultiplayer = Boolean(state.roomId);
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const zoneBtns = document.querySelectorAll('.zone-btn');
@@ -537,6 +555,8 @@ function updateTurnControls() {
     const actionGentle = document.getElementById('action-gentle');
     const actionPressure = document.getElementById('action-pressure');
     const tokenBadge = document.getElementById('tokenBadge');
+    const timerBlock = document.getElementById('timerBlock');
+    const timerEl = document.getElementById('turnTimer');
 
     if (actionGentle && actionPressure) {
         const gentleCost = (state.influenceCosts && state.influenceCosts.gentle_persuasion != null) ? state.influenceCosts.gentle_persuasion : 2;
@@ -548,6 +568,61 @@ function updateTurnControls() {
     if (tokenBadge) {
         const tokensNow = (state.playerTokens != null) ? state.playerTokens : ((state.playerProfile || {}).influence_tokens || 0);
         tokenBadge.textContent = String(tokensNow);
+    }
+
+    const shouldShowTimer = isMultiplayer && isMyTurn;
+    if (timerBlock) timerBlock.classList.toggle('hidden', !shouldShowTimer);
+    if (!shouldShowTimer) {
+        if (countdownIntervalId) {
+            clearInterval(countdownIntervalId);
+            countdownIntervalId = null;
+        }
+        if (timerEl) timerEl.classList.remove('timer-blink');
+    } else {
+        if (!countdownIntervalId) {
+            countdownIntervalId = setInterval(() => {
+                if (!state.roomId) return;
+                if (state.currentSpeaker !== state.myPlayerId) return;
+
+                const deadline = state.turnDeadlineTs;
+                let remaining = null;
+                if (deadline) {
+                    remaining = Math.max(0, Math.ceil((Number(deadline) - Date.now()) / 1000));
+                } else if (state.turnRemainingSec != null) {
+                    remaining = Math.max(0, Number(state.turnRemainingSec));
+                }
+
+                if (remaining == null) return;
+
+                const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+                const ss = String(remaining % 60).padStart(2, '0');
+                if (timerEl) {
+                    timerEl.textContent = `${mm}:${ss}`;
+                    timerEl.classList.toggle('timer-blink', remaining <= 20);
+                }
+
+                if (remaining <= 0) {
+                    clearInterval(countdownIntervalId);
+                    countdownIntervalId = null;
+
+                    state.turnPhase = 'waiting';
+                    state.statementDraft = '';
+                    state.selectedIntentZone = null;
+                    state.selectedInfluenceAction = null;
+
+                    const messageInput = document.getElementById('messageInput');
+                    if (messageInput) messageInput.value = '';
+                    selectZone(null);
+                    updateTurnControls();
+
+                    fetch(`/api/rooms/${state.roomId}/timeout_turn`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ playerId: state.myPlayerId })
+                    }).catch(() => {});
+                }
+            }, 250);
+        }
     }
     
     if (isMyTurn) {

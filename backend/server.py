@@ -269,6 +269,13 @@ def _get_public_room_state(room_id):
         result['turnOrder'] = game_state.get('turn_order', [])
         result['turnIndex'] = game_state.get('turn_index', 0)
         result['currentSpeaker'] = game_state.get('current_speaker')
+        result['turnDeadlineTs'] = game_state.get('turn_deadline_ts')
+        try:
+            dl = int(game_state.get('turn_deadline_ts') or 0)
+            result['turnRemainingSec'] = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
+        except Exception:
+            result['turnRemainingSec'] = None
+        result['turnDurationSec'] = TURN_DURATION_SECONDS
         result['roundIndex'] = (game_state.get('negotiation_state') or {}).get('round', 1)
         result['characters'] = game_state.get('characters', [])
         result['stakeholders'] = result['characters'] # Alias for frontend compatibility
@@ -310,6 +317,7 @@ INITIAL_TRUST = 50  # Default starting trust value (0-100)
 MAX_PLAYER_TOKENS = 12  # Maximum tokens the player can hold
 BASE_LEAK_CHANCE = 0.4 # 40% chance for pressure to leak
 POLARIZATION_SPREAD_IMPACT = 4 # Impact on others if pressure leaks
+TURN_DURATION_SECONDS = 90
 
 INFLUENCE_ACTION_COSTS = {
     "gentle_persuasion": 2,
@@ -1385,6 +1393,7 @@ def get_negotiation_state():
     if room_id and room_id in ROOMS:
         room = ROOMS[room_id]
         if room.get('phase') == 'inGame':
+            _enforce_turn_timeout(room_id, room)
             game_state = room.get('game_state') or {}
             negotiation_state = game_state.get('negotiation_state') or {}
             characters = game_state.get('characters') or []
@@ -1437,6 +1446,9 @@ def get_negotiation_state():
                 'turnOrder': game_state.get('turn_order', []),
                 'turnIndex': game_state.get('turn_index', 0),
                 'currentSpeaker': game_state.get('current_speaker'),
+                'turnDeadlineTs': game_state.get('turn_deadline_ts'),
+                'turnRemainingSec': max(0, int(math.ceil(((int(game_state.get('turn_deadline_ts') or 0)) - int(time.time() * 1000)) / 1000.0))) if game_state.get('turn_deadline_ts') else None,
+                'turnDurationSec': TURN_DURATION_SECONDS,
                 'activeZoneId': active_zone_id,
                 'activeIssueTag': active_issue_tag,
                 'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
@@ -2654,6 +2666,8 @@ def get_room_state(room_id):
     room_id = (room_id or '').upper()
     if room_id not in ROOMS:
         return jsonify({'error': 'Room not found.'}), 404
+    room = ROOMS.get(room_id)
+    _enforce_turn_timeout(room_id, room)
     return jsonify(_get_public_room_state(room_id))
 
 
@@ -2838,15 +2852,18 @@ def _build_room_game_state(room):
         'current_round_meta': {},
     }
 
-    return {
+    game_state = {
         'negotiation_state': negotiation_state,
         'characters': characters,
         'turn_order': turn_order,
         'turn_order_base': turn_order_base,
         'turn_order_round1': turn_order_round1,
         'turn_index': 0,
-        'current_speaker': turn_order[0] if turn_order else None
+        'current_speaker': turn_order[0] if turn_order else None,
+        'turn_deadline_ts': None,
     }
+    _set_turn_deadline(game_state)
+    return game_state
 
 
 def _is_ai_speaker(speaker_id, characters):
@@ -2890,7 +2907,53 @@ def _advance_turn_state(game_state):
 
     game_state['turn_index'] = turn_index
     game_state['current_speaker'] = turn_order[turn_index] if turn_order and turn_index < len(turn_order) else None
+    _set_turn_deadline(game_state)
     return game_state
+
+
+def _set_turn_deadline(game_state):
+    if not game_state:
+        return
+    if not game_state.get('current_speaker'):
+        game_state['turn_deadline_ts'] = None
+        return
+    game_state['turn_deadline_ts'] = int(time.time() * 1000) + int(TURN_DURATION_SECONDS * 1000)
+
+
+def _enforce_turn_timeout(room_id, room):
+    if not room or room.get('phase') != 'inGame':
+        return False
+
+    game_state = room.get('game_state') or {}
+    deadline = game_state.get('turn_deadline_ts')
+    speaker = game_state.get('current_speaker')
+    if not speaker or not deadline:
+        if speaker and not deadline:
+            _set_turn_deadline(game_state)
+        return False
+
+    try:
+        now_ms = int(time.time() * 1000)
+        deadline_ms = int(deadline)
+    except Exception:
+        _set_turn_deadline(game_state)
+        return False
+
+    if now_ms < deadline_ms:
+        return False
+
+    negotiation_state = game_state.get('negotiation_state') or {}
+    log_event(room_id, speaker, 'TURN_TIMEOUT', round_idx=negotiation_state.get('round'), turn_idx=game_state.get('turn_index'))
+
+    _advance_turn_state(game_state)
+    _auto_play_ai_chain(room_id, room)
+
+    try:
+        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    except Exception:
+        pass
+
+    return True
 
 
 def _auto_play_ai_chain(room_id, room, max_steps=None):
@@ -3118,6 +3181,8 @@ def send_message(room_id):
     if room.get('phase') != 'inGame':
         return jsonify({'error': 'Game not started.'}), 400
 
+    _enforce_turn_timeout(room_id, room)
+
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')
     text = payload.get('text', '').strip()
@@ -3254,6 +3319,47 @@ def advance_turn(room_id):
     })
 
 
+@app.route('/api/rooms/<room_id>/timeout_turn', methods=['POST'])
+def timeout_turn(room_id):
+    """Client-triggered timeout check: if the current turn deadline has passed, auto-pass to next speaker."""
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    game_state = room.get('game_state') or {}
+    deadline = game_state.get('turn_deadline_ts')
+    timed_out = False
+    if deadline:
+        try:
+            timed_out = int(time.time() * 1000) >= int(deadline)
+        except Exception:
+            timed_out = False
+
+    if timed_out:
+        _enforce_turn_timeout(room_id, room)
+
+    game_state = room.get('game_state') or {}
+    try:
+        dl = int(game_state.get('turn_deadline_ts') or 0)
+        remaining = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
+    except Exception:
+        remaining = None
+
+    return jsonify({
+        'ok': True,
+        'timedOut': bool(timed_out),
+        'turnIndex': game_state.get('turn_index', 0),
+        'currentSpeaker': game_state.get('current_speaker'),
+        'turnDeadlineTs': game_state.get('turn_deadline_ts'),
+        'turnRemainingSec': remaining,
+        'turnDurationSec': TURN_DURATION_SECONDS,
+    })
+
+
 @app.route('/api/rooms/<room_id>/end_round', methods=['POST'])
 def end_round(room_id):
     """Host-only: force end current round and move to next round."""
@@ -3297,6 +3403,7 @@ def end_round(room_id):
     turn_order = game_state.get('turn_order', []) or []
     game_state['turn_index'] = 0
     game_state['current_speaker'] = turn_order[0] if turn_order else None
+    _set_turn_deadline(game_state)
 
     _auto_play_ai_chain(room_id, room)
 
