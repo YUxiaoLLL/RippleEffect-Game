@@ -312,10 +312,10 @@ BASE_LEAK_CHANCE = 0.4 # 40% chance for pressure to leak
 POLARIZATION_SPREAD_IMPACT = 4 # Impact on others if pressure leaks
 
 INFLUENCE_ACTION_COSTS = {
-    "gentle_persuasion": 1,
-    "pressure_opponent": 2,
-    "strong_persuasion": 3,
-    "ally_recruitment": 4
+    "gentle_persuasion": 2,
+    "pressure_opponent": 4,
+    "strong_persuasion": 6,
+    "ally_recruitment": 8
 }
 INFLUENCE_ACTION_EFFECTS = {
     # Stance delta is towards player's general alignment (support/oppose project)
@@ -329,6 +329,70 @@ INFLUENCE_ACTION_EFFECTS = {
     "pressure_opponent": {"stance_delta": -10, "trust_delta": -15, "history_log": "pressured"},
     # Makes target more opposed/less supportive
 }
+
+def _action_short_key(action):
+    key_map = {
+        "gentle_persuasion": "gentle",
+        "strong_persuasion": "strong",
+        "pressure_opponent": "pressure",
+        "ally_recruitment": "recruit"
+    }
+    return key_map.get(action, action)
+
+
+def _compute_influence_cost(action, role_id, action_history=None):
+    base_cost = INFLUENCE_ACTION_COSTS.get(action)
+    if base_cost is None:
+        return None
+
+    role_data = ROLES.get(role_id) or {}
+    token_modifiers = role_data.get('token_modifiers', {}) or {}
+    modifier = float(token_modifiers.get(_action_short_key(action), 1.0) or 1.0)
+    final_cost = base_cost * modifier
+
+    if action == 'pressure_opponent' and action_history:
+        try:
+            if action_history[-1] == 'pressure_opponent':
+                final_cost += 2
+        except Exception:
+            pass
+
+    return int(math.ceil(final_cost))
+
+
+def _max_tokens_for_role(role_id, starting_tokens):
+    try:
+        starting_tokens = int(starting_tokens or 0)
+    except Exception:
+        starting_tokens = 0
+
+    if starting_tokens <= 0:
+        starting_tokens = int((ROLES.get(role_id) or {}).get('initial_influence_tokens', 5) or 5)
+    return max(1, int(math.floor(starting_tokens * 1.5)))
+
+
+def _regen_room_tokens(game_state):
+    negotiation_state = game_state.get('negotiation_state') or {}
+    current_round = int(negotiation_state.get('round', 1) or 1)
+    if current_round <= 1:
+        return
+
+    characters = game_state.get('characters') or []
+    for char in characters:
+        role_id = char.get('role_id')
+        starting = char.get('starting_influence_tokens', char.get('influence_tokens', 0))
+        max_tokens = _max_tokens_for_role(role_id, starting)
+        char['max_tokens'] = max_tokens
+
+        current_tokens = int(char.get('influence_tokens', 0) or 0)
+        regen = 1
+        if char.get('is_player'):
+            regen = TOKEN_REGEN_RATE
+
+        char['influence_tokens'] = min(current_tokens + regen, max_tokens)
+
+    game_state['characters'] = characters
+    return
 INITIAL_SUPPORT_SCORE = 75
 INITIAL_NEUTRAL_SCORE = 50
 INITIAL_OPPOSE_SCORE = 25
@@ -1343,10 +1407,19 @@ def get_negotiation_state():
             active_zone_id = negotiation_state.get('active_zone_id') or 'GLOBAL'
             active_issue_tag = negotiation_state.get('active_issue_tag') or compute_issue_tag(active_zone_id)
 
+            player_role_id = (player_profile or {}).get('role_id')
+            action_history = (negotiation_state.get('player_action_history') or {}).get(player_id, [])
+            influence_costs = {
+                'gentle_persuasion': _compute_influence_cost('gentle_persuasion', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('gentle_persuasion'),
+                'pressure_opponent': _compute_influence_cost('pressure_opponent', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('pressure_opponent'),
+            }
+
             return jsonify({
                 'currentRound': negotiation_state.get('round', 1),
                 'stakeholders': characters,
                 'playerProfile': player_profile,
+                'playerTokens': (player_profile or {}).get('influence_tokens', 0),
+                'influenceCosts': influence_costs,
                 'climateScore': negotiation_state.get('negotiation_climate', 50),
                 'messages': format_history_as_messages(
                     combined_history,
@@ -2652,19 +2725,21 @@ def _build_room_game_state(room):
         if role_id in available_slots:
             available_slots.remove(role_id)
             
-        data = ONBOARDING_DATA.get(role_id)
-        start_tokens = int((data or {}).get('tokens', 5))
+        role_data = ROLES.get(role_id) or {}
+        onboarding_role_data = ONBOARDING_DATA.get(role_id) or {}
+        start_tokens = int(role_data.get('initial_influence_tokens', onboarding_role_data.get('tokens', 5)) or 5)
+        max_tokens = _max_tokens_for_role(role_id, start_tokens)
         characters.append({
             'role_id': role_id,
-            'role_name': (data or {}).get('role_name', role_id),
-            'portrait': (data or {}).get('portrait', None),
+            'role_name': role_data.get('name', onboarding_role_data.get('role_name', role_id)),
+            'portrait': onboarding_role_data.get('portrait', None),
             'local_resident': False,
             'age': None,
             'has_children': False,
             'backstory': '',
             'influence_tokens': start_tokens,
             'starting_influence_tokens': start_tokens,
-            'max_tokens': 12,
+            'max_tokens': max_tokens,
             'stance_score': 50,
             'initial_stance': 'Support',
             'trust_value': 50,
@@ -2694,6 +2769,8 @@ def _build_room_game_state(room):
         if not role_data and onboarding_role_data:
              start_tokens = int(onboarding_role_data.get('tokens', 5))
 
+        max_tokens = _max_tokens_for_role(role_id, start_tokens)
+
         role_name = role_data.get('name', onboarding_role_data.get('role_name', role_id))
         description = role_data.get('description', onboarding_role_data.get('description', ''))
         trust = role_data.get('initial_trust', INITIAL_TRUST)
@@ -2710,7 +2787,7 @@ def _build_room_game_state(room):
             'stance': get_stance_category(INITIAL_NEUTRAL_SCORE),
             'influence_tokens': start_tokens,
             'starting_influence_tokens': start_tokens,
-            'max_tokens': 8,
+            'max_tokens': max_tokens,
             'trust_value': trust,
             'polarization_score': 0,
             'previous_stance_category': get_stance_category(INITIAL_NEUTRAL_SCORE),
@@ -2799,6 +2876,8 @@ def _advance_turn_state(game_state):
         negotiation_state['current_round_dialogue'] = {}
         negotiation_state['current_round_meta'] = {}
         negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+
+        _regen_room_tokens(game_state)
 
         # After Round 1 ends, switch to base order (host is no longer forced first)
         if int(negotiation_state.get('round', 1)) == 2:
@@ -3058,7 +3137,38 @@ def send_message(room_id):
     if player_id != current_speaker:
         return jsonify({'error': 'Not your turn.', 'currentSpeaker': current_speaker}), 403
 
+    characters = game_state.get('characters') or []
+    me = next((c for c in characters if c.get('id') == player_id), {})
+    role_id = (me or {}).get('role_id')
+    if not role_id:
+        return jsonify({'error': 'Player role not found.'}), 400
+
+    if not influence_action:
+        influence_action = 'gentle_persuasion'
+
     negotiation_state = game_state.get('negotiation_state', {})
+    negotiation_state.setdefault('player_action_history', {})
+    action_history = negotiation_state['player_action_history'].get(player_id, [])
+    cost = _compute_influence_cost(influence_action, role_id, action_history=action_history)
+    if cost is None:
+        return jsonify({'error': 'Invalid influence action.'}), 400
+
+    current_tokens = int((me or {}).get('influence_tokens', 0) or 0)
+    if current_tokens < cost:
+        return jsonify({'error': 'Not enough tokens.', 'cost': cost, 'tokens': current_tokens}), 400
+
+    me['influence_tokens'] = current_tokens - cost
+    max_tokens = _max_tokens_for_role(role_id, me.get('starting_influence_tokens', current_tokens))
+    me['max_tokens'] = max_tokens
+
+    action_history = list(action_history)
+    action_history.append(influence_action)
+    if len(action_history) > 5:
+        action_history = action_history[-5:]
+    negotiation_state['player_action_history'][player_id] = action_history
+
+    game_state['characters'] = characters
+
     negotiation_state.setdefault('current_round_dialogue', {})
     negotiation_state['current_round_dialogue'][player_id] = text
 
@@ -3071,13 +3181,13 @@ def send_message(room_id):
     negotiation_state['active_zone_id'] = zid
     negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
     negotiation_state.setdefault('current_round_meta', {})
-    me = next((c for c in (game_state.get('characters') or []) if c.get('id') == player_id), {})
     negotiation_state['current_round_meta'][player_id] = {
         'zone_id': zid,
         'issue_tag': negotiation_state.get('active_issue_tag'),
-        'role_id': (me or {}).get('role_id'),
+        'role_id': role_id,
         'intent': intent,
-        'influence_action': influence_action
+        'influence_action': influence_action,
+        'influence_cost': cost
     }
 
     # M2: Log Event
@@ -3085,8 +3195,8 @@ def send_message(room_id):
         room_id, 
         player_id, 
         'MESSAGE_SENT', 
-        payload={'text': text, 'zone': zid, 'intent': intent, 'influenceAction': influence_action}, 
-        role=(me or {}).get('role_id'), 
+        payload={'text': text, 'zone': zid, 'intent': intent, 'influenceAction': influence_action, 'cost': cost, 'tokensAfter': me.get('influence_tokens')}, 
+        role=role_id, 
         round_idx=negotiation_state.get('round'), 
         turn_idx=game_state.get('turn_index')
     )
@@ -3175,6 +3285,8 @@ def end_round(room_id):
     negotiation_state['current_round_dialogue'] = {}
     negotiation_state['current_round_meta'] = {}
     negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+
+    _regen_room_tokens(game_state)
 
     # After Round 1 ends, switch to base order (host is no longer forced first)
     if int(negotiation_state.get('round', 1)) == 2:

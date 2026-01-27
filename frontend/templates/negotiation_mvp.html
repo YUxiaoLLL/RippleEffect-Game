@@ -383,7 +383,9 @@ let state = {
     hasSubmitted: false,
     turnPhase: 'waiting',
     selectedInfluenceAction: null,
-    statementDraft: ''
+    statementDraft: '',
+    influenceCosts: null,
+    playerTokens: null
 };
 
 let pollIntervalId = null;
@@ -395,6 +397,8 @@ async function initializeNegotiation() {
         if (response.ok) {
             const data = await response.json();
             state = { ...state, ...data };
+            if (data && data.influenceCosts) state.influenceCosts = data.influenceCosts;
+            if (data && (data.playerTokens != null)) state.playerTokens = data.playerTokens;
 
             if (!Array.isArray(state.messages)) state.messages = [];
             if (!Array.isArray(state.stakeholders)) state.stakeholders = [];
@@ -434,7 +438,7 @@ async function pollOnce() {
     if (!state.roomId) return;
     try {
         const prevSpeaker = state.currentSpeaker;
-        const res = await fetch(`/api/rooms/${state.roomId}/state`);
+        const res = await fetch('/api/negotiation/state');
         if (!res.ok) return;
 
         const data = await res.json();
@@ -446,9 +450,13 @@ async function pollOnce() {
         if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== currentMessages.length) {
             state = { ...state, ...data };
             if (!Array.isArray(state.messages)) state.messages = currentMessages;
-            if (prevSpeaker !== data.currentSpeaker && data.currentSpeaker === state.myPlayerId) {
+            if (data && data.influenceCosts) state.influenceCosts = data.influenceCosts;
+            if (data && (data.playerTokens != null)) state.playerTokens = data.playerTokens;
+
+            if (prevSpeaker && state.currentSpeaker === state.myPlayerId && prevSpeaker !== state.myPlayerId) {
                 state.hasSubmitted = false;
             }
+
             renderUI();
         }
     } catch (e) {
@@ -540,6 +548,13 @@ function updateTurnControls() {
     const waitingModeRow = document.getElementById('waitingModeRow');
     const actionGentle = document.getElementById('action-gentle');
     const actionPressure = document.getElementById('action-pressure');
+
+    if (actionGentle && actionPressure) {
+        const gentleCost = (state.influenceCosts && state.influenceCosts.gentle_persuasion != null) ? state.influenceCosts.gentle_persuasion : 2;
+        const pressureCost = (state.influenceCosts && state.influenceCosts.pressure_opponent != null) ? state.influenceCosts.pressure_opponent : 4;
+        actionGentle.textContent = `Gentle Persuade (${gentleCost} Tokens)`;
+        actionPressure.textContent = `Pressure (${pressureCost} Tokens)`;
+    }
     
     if (isMyTurn) {
         if (!state.turnPhase || state.turnPhase === 'waiting') {
