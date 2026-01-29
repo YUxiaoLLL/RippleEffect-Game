@@ -89,6 +89,14 @@
         .zone-glow {
             animation: zoneGlow 1.1s ease-in-out infinite;
         }
+
+        @keyframes arrowBounce {
+            0%, 100% { transform: translateY(0); opacity: 0.9; }
+            50% { transform: translateY(-6px); opacity: 1; }
+        }
+        .onboarding-arrow {
+            animation: arrowBounce 0.9s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
@@ -250,12 +258,40 @@
                 <div id="briefZoneText" class="font-inter text-gray-800 text-[15px] mt-3">This is A1 — Commercial.</div>
                 <div class="font-inter text-gray-500 text-[12px] mt-3">Look at the 3D scene — controls are locked for now.</div>
             </div>
+
+            <div class="mt-5">
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="flex flex-col items-center">
+                        <div id="briefArrowA1" class="hidden onboarding-arrow text-blue-600 text-[16px] leading-none">↑</div>
+                        <div id="briefZoneA1" class="w-full text-center py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs bg-white">A1</div>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="briefArrowA2" class="hidden onboarding-arrow text-blue-600 text-[16px] leading-none">↑</div>
+                        <div id="briefZoneA2" class="w-full text-center py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs bg-white">A2</div>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="briefArrowK1" class="hidden onboarding-arrow text-blue-600 text-[16px] leading-none">↑</div>
+                        <div id="briefZoneK1" class="w-full text-center py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs bg-white">K1</div>
+                    </div>
+                </div>
+                <div class="text-[11px] text-gray-600 px-2 text-center mt-2">A1 / A2 / K1 are the only options.</div>
+            </div>
             <button onclick="briefNextFromZones()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
                 Got it — how do we decide?
             </button>
         </div>
 
         <div id="briefStep3" class="hidden">
+            <div class="text-center">
+                <div class="font-righteous text-blue-600 text-[22px] leading-tight">Your task</div>
+                <div class="font-inter text-gray-800 text-[15px] mt-3">Your task is to present your viewpoint and persuade other players to begin construction in the area you favor</div>
+            </div>
+            <button onclick="briefNextFromTask()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+                OK — show me the flow
+            </button>
+        </div>
+
+        <div id="briefStep4" class="hidden">
             <div class="text-center">
                 <div class="font-righteous text-blue-600 text-[22px] leading-tight">Each round, you do 3 things</div>
             </div>
@@ -278,7 +314,14 @@
                     <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-[16px]">🗳</div>
                     <div>
                         <div class="font-semibold">Confirm your choice</div>
-                        <div class="text-gray-500 text-[12px]">Lock it in for the round</div>
+                        <div class="text-gray-500 text-[12px]">You may change your selection over rounds</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-[16px]">🤝</div>
+                    <div>
+                        <div class="font-semibold">Build allies</div>
+                        <div class="text-gray-500 text-[12px]">The more allies you have, the closer you are to success</div>
                     </div>
                 </div>
             </div>
@@ -387,27 +430,15 @@ function renderBrief() {
     const s1 = document.getElementById('briefStep1');
     const s2 = document.getElementById('briefStep2');
     const s3 = document.getElementById('briefStep3');
+    const s4 = document.getElementById('briefStep4');
     const lockOverlay = document.getElementById('threeLockOverlay');
-    const intentModeRow = document.getElementById('intentModeRow');
 
     if (s1) s1.classList.toggle('hidden', briefStep !== 1);
     if (s2) s2.classList.toggle('hidden', briefStep !== 2);
     if (s3) s3.classList.toggle('hidden', briefStep !== 3);
+    if (s4) s4.classList.toggle('hidden', briefStep !== 4);
 
     if (lockOverlay) lockOverlay.classList.toggle('hidden', briefStep !== 2);
-
-    if (intentModeRow) intentModeRow.classList.toggle('hidden', briefStep !== 2);
-    ['A1', 'A2', 'K1'].forEach(z => {
-        const btn = document.getElementById(`btn-${z}`);
-        if (!btn) return;
-        if (briefStep === 2) {
-            btn.disabled = true;
-            btn.classList.add('opacity-80');
-        } else {
-            btn.disabled = false;
-            btn.classList.remove('opacity-80');
-        }
-    });
 
     if (modal) {
         if (briefStep === 2) {
@@ -437,13 +468,20 @@ function renderBrief() {
 function highlightZone(zoneId) {
     const ids = ['A1', 'A2', 'K1'];
     ids.forEach(z => {
-        const btn = document.getElementById(`btn-${z}`);
-        if (btn) btn.classList.toggle('zone-glow', z === zoneId);
+        const pill = document.getElementById(`briefZone${z}`);
+        if (pill) pill.classList.toggle('zone-glow', z === zoneId);
+        const arrow = document.getElementById(`briefArrow${z}`);
+        if (arrow) arrow.classList.toggle('hidden', z !== zoneId);
     });
     const panel = document.getElementById('3dPanel');
     if (panel) {
         panel.classList.toggle('ring-4', true);
         panel.classList.toggle('ring-blue-500/50', true);
+    }
+
+    const iframe = document.getElementById('threeFrame');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zoneId }, '*');
     }
 }
 
@@ -474,8 +512,10 @@ function stopZoneTour() {
     }
     const ids = ['A1', 'A2', 'K1'];
     ids.forEach(z => {
-        const btn = document.getElementById(`btn-${z}`);
-        if (btn) btn.classList.remove('zone-glow');
+        const pill = document.getElementById(`briefZone${z}`);
+        if (pill) pill.classList.remove('zone-glow');
+        const arrow = document.getElementById(`briefArrow${z}`);
+        if (arrow) arrow.classList.add('hidden');
     });
     const panel = document.getElementById('3dPanel');
     if (panel) {
@@ -492,6 +532,11 @@ function briefNextFromZones() {
     setBriefStep(3);
 }
 window.briefNextFromZones = briefNextFromZones;
+
+function briefNextFromTask() {
+    setBriefStep(4);
+}
+window.briefNextFromTask = briefNextFromTask;
 
 function briefStartGame() {
     closeBrief();
