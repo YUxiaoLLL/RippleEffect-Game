@@ -81,6 +81,14 @@
         .timer-blink {
             animation: timerBlink 1s linear infinite;
         }
+
+        @keyframes zoneGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0); }
+            50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.35); }
+        }
+        .zone-glow {
+            animation: zoneGlow 1.1s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="w-screen h-screen overflow-hidden flex items-center justify-center bg-[#202020]">
@@ -119,6 +127,8 @@
                 id="threeFrame"
             ></iframe>
         </div>
+
+        <div id="threeLockOverlay" class="hidden absolute inset-0 z-20 bg-black/10"></div>
         
         <button id="expandBtn" class="absolute top-3 right-3 p-2 bg-white/80 backdrop-blur rounded-full hover:bg-white transition-colors shadow-md z-10">
             <svg class="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,48 +232,63 @@
 
 <!-- Game Brief Modal -->
 <div id="gameBriefModal" class="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-[slideUp_0.3s_ease-out]">
-        <h2 class="font-righteous text-2xl text-blue-600 mb-4 text-center">MISSION BRIEF</h2>
-        
-        <div class="space-y-4 text-sm font-inter text-gray-700 h-[60vh] overflow-y-auto pr-2">
-            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <strong class="block text-blue-800 mb-1">🎯 The Goal</strong>
-                <p class="mb-2">Only <strong>ONE</strong> construction team is available. We must decide which zone gets activated <strong>FIRST</strong>:</p>
-                <ul class="list-disc list-inside space-y-1 ml-1">
-                    <li><span class="text-orange-600 font-bold">A1</span> (High-end commercial area)</li>
-                    <li><span class="text-blue-600 font-bold">A2</span> (High-end residential area)</li>
-                    <li><span class="text-green-600 font-bold">K1</span> (Councilor/Affordable House)</li>
-                </ul>
-            </div>
+    <div id="briefCard" class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-[slideUp_0.3s_ease-out]">
 
-            <div>
-                <strong class="block text-gray-900 mb-1">How to Play</strong>
-                <p>You will play a specific role. Each round, read others’ viewpoints, state your position, and use your statement and intent marker to steer the discussion toward the zone you support.</p>
+        <div id="briefStep1" class="">
+            <div class="text-center">
+                <div class="font-righteous text-blue-600 text-[22px] leading-tight">Only ONE zone can be activated first.</div>
+                <div class="font-inter text-gray-800 text-[15px] mt-3">Your job is to decide which one — together.</div>
             </div>
-
-            <div>
-                <strong class="block text-gray-900 mb-1">How to Win</strong>
-                <p>At the end of the game, if the zone you supported receives the most votes in the final vote, you win the match.</p>
-            </div>
-
-            <div>
-                <strong class="block text-gray-900 mb-1">📝 Your Turn (1.5 min limit)</strong>
-                <ol class="list-decimal list-inside space-y-1 text-gray-600 pl-1">
-                    <li><strong>Propose:</strong> Write 1-2 sentences.</li>
-                    <li><strong>Mark:</strong> Place your intent marker on a zone.</li>
-                    <li><strong>Vote:</strong> Confirm your choice to lock it in.</li>
-                </ol>
-            </div>
-
-            <div>
-                <strong class="block text-gray-900 mb-1">🏁 Outcome</strong>
-                <p>5 rounds total. At the end, the zone with the most votes wins.</p>
-            </div>
+            <button onclick="briefNextFromGoal()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+                OK — show me the zones
+            </button>
         </div>
 
-        <button onclick="closeBrief()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
-            I UNDERSTAND - START
-        </button>
+        <div id="briefStep2" class="hidden">
+            <div class="text-center">
+                <div class="font-righteous text-blue-600 text-[22px] leading-tight">Meet the zones</div>
+                <div id="briefZoneText" class="font-inter text-gray-800 text-[15px] mt-3">This is A1 — Commercial.</div>
+                <div class="font-inter text-gray-500 text-[12px] mt-3">Look at the 3D scene — controls are locked for now.</div>
+            </div>
+            <button onclick="briefNextFromZones()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+                Got it — how do we decide?
+            </button>
+        </div>
+
+        <div id="briefStep3" class="hidden">
+            <div class="text-center">
+                <div class="font-righteous text-blue-600 text-[22px] leading-tight">Each round, you do 3 things</div>
+            </div>
+            <div class="mt-5 space-y-3 font-inter text-gray-800 text-[14px]">
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-[16px]">🗣</div>
+                    <div>
+                        <div class="font-semibold">Say your reason</div>
+                        <div class="text-gray-500 text-[12px]">1–2 sentences</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-[16px]">📍</div>
+                    <div>
+                        <div class="font-semibold">Mark ONE zone</div>
+                        <div class="text-gray-500 text-[12px]">A1 / A2 / K1</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-[16px]">🗳</div>
+                    <div>
+                        <div class="font-semibold">Confirm your choice</div>
+                        <div class="text-gray-500 text-[12px]">Lock it in for the round</div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-5 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <div class="font-inter text-blue-800 font-semibold text-[13px]">Remember, your decision makes a change</div>
+            </div>
+            <button onclick="briefStartGame()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+                I understand — Start Round 1
+            </button>
+        </div>
     </div>
 </div>
 
@@ -347,7 +372,134 @@ const ZONE_INFO = {
 };
 
 // --- v0 Logic: Game Brief ---
+let briefStep = 1;
+let briefZoneIntervalId = null;
+let briefZoneIndex = 0;
+
+function setBriefStep(nextStep) {
+    briefStep = nextStep;
+    renderBrief();
+}
+
+function renderBrief() {
+    const modal = document.getElementById('gameBriefModal');
+    const card = document.getElementById('briefCard');
+    const s1 = document.getElementById('briefStep1');
+    const s2 = document.getElementById('briefStep2');
+    const s3 = document.getElementById('briefStep3');
+    const lockOverlay = document.getElementById('threeLockOverlay');
+    const intentModeRow = document.getElementById('intentModeRow');
+
+    if (s1) s1.classList.toggle('hidden', briefStep !== 1);
+    if (s2) s2.classList.toggle('hidden', briefStep !== 2);
+    if (s3) s3.classList.toggle('hidden', briefStep !== 3);
+
+    if (lockOverlay) lockOverlay.classList.toggle('hidden', briefStep !== 2);
+
+    if (intentModeRow) intentModeRow.classList.toggle('hidden', briefStep !== 2);
+    ['A1', 'A2', 'K1'].forEach(z => {
+        const btn = document.getElementById(`btn-${z}`);
+        if (!btn) return;
+        if (briefStep === 2) {
+            btn.disabled = true;
+            btn.classList.add('opacity-80');
+        } else {
+            btn.disabled = false;
+            btn.classList.remove('opacity-80');
+        }
+    });
+
+    if (modal) {
+        if (briefStep === 2) {
+            modal.classList.remove('bg-black/80');
+            modal.classList.add('bg-black/30', 'items-end');
+        } else {
+            modal.classList.remove('bg-black/30', 'items-end');
+            modal.classList.add('bg-black/80', 'items-center');
+        }
+    }
+
+    if (card) {
+        if (briefStep === 2) {
+            card.classList.add('bg-white/90', 'backdrop-blur');
+        } else {
+            card.classList.remove('bg-white/90', 'backdrop-blur');
+        }
+    }
+
+    if (briefStep === 2) {
+        startZoneTour();
+    } else {
+        stopZoneTour();
+    }
+}
+
+function highlightZone(zoneId) {
+    const ids = ['A1', 'A2', 'K1'];
+    ids.forEach(z => {
+        const btn = document.getElementById(`btn-${z}`);
+        if (btn) btn.classList.toggle('zone-glow', z === zoneId);
+    });
+    const panel = document.getElementById('3dPanel');
+    if (panel) {
+        panel.classList.toggle('ring-4', true);
+        panel.classList.toggle('ring-blue-500/50', true);
+    }
+}
+
+function startZoneTour() {
+    stopZoneTour();
+    const zoneText = document.getElementById('briefZoneText');
+    const zones = [
+        { id: 'A1', text: 'This is A1 — Commercial.' },
+        { id: 'A2', text: 'This is A2 — Residential.' },
+        { id: 'K1', text: 'This is K1 — Affordable Housing.' }
+    ];
+
+    briefZoneIndex = 0;
+    highlightZone(zones[briefZoneIndex].id);
+    if (zoneText) zoneText.textContent = zones[briefZoneIndex].text;
+
+    briefZoneIntervalId = setInterval(() => {
+        briefZoneIndex = (briefZoneIndex + 1) % zones.length;
+        highlightZone(zones[briefZoneIndex].id);
+        if (zoneText) zoneText.textContent = zones[briefZoneIndex].text;
+    }, 1400);
+}
+
+function stopZoneTour() {
+    if (briefZoneIntervalId) {
+        clearInterval(briefZoneIntervalId);
+        briefZoneIntervalId = null;
+    }
+    const ids = ['A1', 'A2', 'K1'];
+    ids.forEach(z => {
+        const btn = document.getElementById(`btn-${z}`);
+        if (btn) btn.classList.remove('zone-glow');
+    });
+    const panel = document.getElementById('3dPanel');
+    if (panel) {
+        panel.classList.remove('ring-4', 'ring-blue-500/50');
+    }
+}
+
+function briefNextFromGoal() {
+    setBriefStep(2);
+}
+window.briefNextFromGoal = briefNextFromGoal;
+
+function briefNextFromZones() {
+    setBriefStep(3);
+}
+window.briefNextFromZones = briefNextFromZones;
+
+function briefStartGame() {
+    closeBrief();
+}
+window.briefStartGame = briefStartGame;
+
 function closeBrief() {
+    stopZoneTour();
     document.getElementById('gameBriefModal').classList.add('hidden');
     // Show controls hint briefly
     const hint = document.getElementById('controlsHint');
@@ -358,8 +510,14 @@ function closeBrief() {
             setTimeout(() => hint.classList.add('hidden'), 500);
         }, 10000); // 10 seconds
     }
+
+    if (typeof renderUI === 'function') {
+        renderUI();
+    }
 }
 window.closeBrief = closeBrief;
+
+renderBrief();
 
 // Application State
 let state = {
