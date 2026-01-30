@@ -437,6 +437,8 @@ const ZONE_INFO = {
     }
 };
 
+var state = null;
+
 // --- v0 Logic: Game Brief ---
 let briefStep = 1;
 let briefZoneIntervalId = null;
@@ -660,7 +662,7 @@ window.closeBrief = closeBrief;
 renderBrief();
 
 // Application State
-let state = {
+state = {
     currentRound: 1,
     maxRounds: 5,
     messages: [],
