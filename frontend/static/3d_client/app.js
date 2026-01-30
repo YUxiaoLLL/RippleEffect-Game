@@ -365,6 +365,8 @@ let selectedBuilding = null;
 let hoveredBuilding = null;
 let activeSelectionGroup = []; // NEW: Stores all meshes currently highlighted as a group
 
+let pendingHighlightZone = null;
+
 // --- Semantic Data ---
 let masterplanData = {};
 let idToPlotMap = {}; // Maps mesh ID -> Plot Key (e.g. "courtyard_58" -> "A1")
@@ -1235,6 +1237,7 @@ window.addEventListener('message', (event) => {
     if (event.data.type === 'HIGHLIGHT_ZONE') {
         const zone = event.data.zone;
         console.log("[3D] Highlight Zone:", zone);
+        pendingHighlightZone = zone;
         toggleZoneIndicator(zone);
         
         // Also highlight buildings
@@ -1250,17 +1253,35 @@ function highlightZoneBuildings(zone) {
     
     const plotInfo = masterplanData[zone];
     if (!plotInfo) return;
+
+    const ids = Array.isArray(plotInfo.ids) ? plotInfo.ids.map(v => String(v).trim()) : [];
+    if (ids.length === 0) return;
     
     // Highlight relevant meshes
     buildings.forEach(mesh => {
         const rawFid = mesh.userData.fid;
         const fid = rawFid ? String(rawFid).trim() : String(mesh.userData.id);
         
-        if (plotInfo.ids.includes(fid)) {
+        if (ids.includes(fid)) {
              // Determine color
              const color = zone === 'A1' ? 0xF97316 : zone === 'A2' ? 0x3B82F6 : 0x22C55E;
              highlightMesh(mesh, color, 0.8);
              activeSelectionGroup.push(mesh);
+        }
+    });
+
+    // Also highlight open spaces (courtyards) if present
+    clickableObjects.forEach(mesh => {
+        if (!mesh || !mesh.userData) return;
+        if (mesh.userData.type !== 'open_space') return;
+
+        const id = mesh.userData.id ? String(mesh.userData.id).trim() : '';
+        if (!id) return;
+
+        if (ids.includes(id)) {
+            const color = zone === 'A1' ? 0xF97316 : zone === 'A2' ? 0x3B82F6 : 0x22C55E;
+            highlightMesh(mesh, color, 0.5);
+            activeSelectionGroup.push(mesh);
         }
     });
 }
@@ -1635,6 +1656,10 @@ function loadAndDrawLayer(url, colorOrMaterial, center, yOffset = 0) {
             cityGroup.add(mesh);
         });
         console.log("✅ Open Spaces added to scene & clickable list");
+
+        if (pendingHighlightZone) {
+            highlightZoneBuildings(pendingHighlightZone);
+        }
         return; 
       }
 

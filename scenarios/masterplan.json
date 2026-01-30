@@ -13,25 +13,14 @@
     "description": "35-story landmark tower. High controversy due to height.",
     "ai_tags": ["high_density", "luxury", "skyline_impact"],
     "target_irr": 0.11,
-    "ids": ["courtyard_58", "water_11", "water_10"]
+    "ids": ["courtyard_58"]
   },
   "A2": {
     "name": "The Workspace (Plot A2)",
     "type": "commercial_office",
     "description": "Sustainable workspace with active ground floor.",
     "ai_tags": ["employment", "sustainable", "retail"],
-    "ids": [
-      "osgb1000041683238", 
-      "osgb1000041683234", 
-      "osgb1000041683235", 
-      "osgb1000041683243", 
-      "osgb1000041683239", 
-      "osgb1000041683249", 
-      "osgb1000041683245", 
-      "osgb1000041683241", 
-      "osgb1000041683242", 
-      "osgb1000041683237"
-    ]
+    "ids": ["courtyard_69"]
   },
   "K1": {
     "name": "Zone K1",
