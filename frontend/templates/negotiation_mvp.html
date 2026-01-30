@@ -247,7 +247,19 @@
 
 <!-- Game Brief Modal -->
 <div id="gameBriefModal" class="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
-    <div id="briefCard" class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-[slideUp_0.3s_ease-out]">
+    <div class="relative max-w-sm w-full">
+        <button id="briefNavPrev" class="absolute -left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white shadow-lg flex items-center justify-center text-gray-700" aria-label="Previous">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </button>
+        <button id="briefNavNext" class="absolute -right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white shadow-lg flex items-center justify-center text-gray-700" aria-label="Next">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </button>
+
+        <div id="briefCard" class="bg-white rounded-2xl w-full p-6 shadow-2xl animate-[slideUp_0.3s_ease-out]">
 
         <div id="briefStep1" class="">
             <div class="text-center">
@@ -328,6 +340,7 @@
             <button onclick="briefStartGame()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
                 I understand — Start Round 1
             </button>
+        </div>
         </div>
     </div>
 </div>
@@ -441,6 +454,8 @@ function renderBrief() {
     const s2 = document.getElementById('briefStep2');
     const s4 = document.getElementById('briefStep4');
     const lockOverlay = document.getElementById('threeLockOverlay');
+    const navPrev = document.getElementById('briefNavPrev');
+    const navNext = document.getElementById('briefNavNext');
 
     if (s1) s1.classList.toggle('hidden', briefStep !== 1);
     if (s2) s2.classList.toggle('hidden', briefStep !== 2);
@@ -470,6 +485,17 @@ function renderBrief() {
         startZoneTour();
     } else {
         stopZoneTour();
+    }
+
+    if (navPrev) {
+        navPrev.classList.toggle('hidden', briefStep <= 1);
+        navPrev.disabled = briefStep <= 1;
+        navPrev.classList.toggle('opacity-40', briefStep <= 1);
+    }
+    if (navNext) {
+        navNext.classList.toggle('hidden', briefStep >= 4);
+        navNext.disabled = briefStep >= 4;
+        navNext.classList.toggle('opacity-40', briefStep >= 4);
     }
 }
 
@@ -551,6 +577,20 @@ function briefStartGame() {
     closeBrief();
 }
 window.briefStartGame = briefStartGame;
+
+function briefNav(delta) {
+    const next = Math.max(1, Math.min(4, (briefStep || 1) + delta));
+    if (next === briefStep) return;
+    setBriefStep(next);
+}
+window.briefNav = briefNav;
+
+window.addEventListener('load', () => {
+    const navPrev = document.getElementById('briefNavPrev');
+    const navNext = document.getElementById('briefNavNext');
+    if (navPrev) navPrev.addEventListener('click', () => briefNav(-1));
+    if (navNext) navNext.addEventListener('click', () => briefNav(1));
+});
 
 function closeBrief() {
     stopZoneTour();
