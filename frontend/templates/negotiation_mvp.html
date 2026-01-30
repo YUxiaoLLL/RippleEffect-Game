@@ -21,10 +21,10 @@
                         'success': '#16A34A',
                         'warning': '#CA8A04',
                         'destructive': '#DC2626'
-                    }
-                }
-            }
-        }
+                    },
+                },
+            },
+        };
     </script>
     <style>
         body {
@@ -337,7 +337,7 @@
             <div class="mt-5 bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <div class="font-inter text-blue-800 font-semibold text-[13px]">Remember, your decision makes a change</div>
             </div>
-            <button onclick="briefStartGame()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+            <button id="briefReadyBtn" onclick="briefStartGame()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
                 I understand — Start Round 1
             </button>
         </div>
@@ -441,9 +441,19 @@ const ZONE_INFO = {
 let briefStep = 1;
 let briefZoneIntervalId = null;
 let briefZoneIndex = 0;
+const BRIEF_STEPS = [1, 2, 4];
+
+function normalizeBriefStep(step) {
+    const n = Number(step);
+    if (!Number.isFinite(n)) return BRIEF_STEPS[0];
+    if (BRIEF_STEPS.includes(n)) return n;
+    if (n < 2) return 1;
+    if (n < 4) return 2;
+    return 4;
+}
 
 function setBriefStep(nextStep) {
-    briefStep = nextStep;
+    briefStep = normalizeBriefStep(nextStep);
     renderBrief();
 }
 
@@ -456,6 +466,10 @@ function renderBrief() {
     const lockOverlay = document.getElementById('threeLockOverlay');
     const navPrev = document.getElementById('briefNavPrev');
     const navNext = document.getElementById('briefNavNext');
+    const readyBtn = document.getElementById('briefReadyBtn');
+
+    briefStep = normalizeBriefStep(briefStep);
+    const stepIdx = BRIEF_STEPS.indexOf(briefStep);
 
     if (s1) s1.classList.toggle('hidden', briefStep !== 1);
     if (s2) s2.classList.toggle('hidden', briefStep !== 2);
@@ -488,14 +502,38 @@ function renderBrief() {
     }
 
     if (navPrev) {
-        navPrev.classList.toggle('hidden', briefStep <= 1);
-        navPrev.disabled = briefStep <= 1;
-        navPrev.classList.toggle('opacity-40', briefStep <= 1);
+        const atStart = stepIdx <= 0;
+        navPrev.classList.toggle('hidden', atStart);
+        navPrev.disabled = atStart;
+        navPrev.classList.toggle('opacity-40', atStart);
     }
     if (navNext) {
-        navNext.classList.toggle('hidden', briefStep >= 4);
-        navNext.disabled = briefStep >= 4;
-        navNext.classList.toggle('opacity-40', briefStep >= 4);
+        const atEnd = stepIdx >= (BRIEF_STEPS.length - 1);
+        navNext.classList.toggle('hidden', atEnd);
+        navNext.disabled = atEnd;
+        navNext.classList.toggle('opacity-40', atEnd);
+    }
+
+    if (readyBtn && (typeof state !== 'undefined') && state && state.roomId) {
+        const readyCount = state.readyCount != null ? state.readyCount : 0;
+        const readyTotal = state.readyTotal != null ? state.readyTotal : 0;
+        const iAmReady = Boolean(state.iAmReady);
+        const isReadyPhase = (state.phase === 'ready');
+        const isInGame = (state.phase === 'inGame');
+
+        if (isInGame) {
+            if (modal && !modal.classList.contains('hidden')) closeBrief();
+        } else if (isReadyPhase && iAmReady) {
+            readyBtn.disabled = true;
+            readyBtn.textContent = `Waiting for others to read (${readyCount}/${readyTotal})`;
+            readyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            readyBtn.classList.add('bg-gray-400');
+        } else {
+            readyBtn.disabled = false;
+            readyBtn.textContent = 'I understand — Start Round 1';
+            readyBtn.classList.remove('bg-gray-400');
+            readyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        }
     }
 }
 
@@ -519,6 +557,7 @@ function highlightZone(zoneId) {
     const iframe = document.getElementById('threeFrame');
     if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'HIGHLIGHT_ZONE', zone: zoneId }, '*');
+        iframe.contentWindow.postMessage({ type: 'FOCUS_ZONE', zone: zoneId }, '*');
     }
 }
 
@@ -574,13 +613,20 @@ function briefNextFromZones() {
 window.briefNextFromZones = briefNextFromZones;
 
 function briefStartGame() {
+    if (state && state.roomId) {
+        markReady();
+        return;
+    }
     closeBrief();
 }
 window.briefStartGame = briefStartGame;
 
 function briefNav(delta) {
-    const next = Math.max(1, Math.min(4, (briefStep || 1) + delta));
-    if (next === briefStep) return;
+    const cur = normalizeBriefStep(briefStep);
+    const idx = BRIEF_STEPS.indexOf(cur);
+    const nextIdx = Math.max(0, Math.min(BRIEF_STEPS.length - 1, idx + Number(delta)));
+    const next = BRIEF_STEPS[nextIdx];
+    if (next === cur) return;
     setBriefStep(next);
 }
 window.briefNav = briefNav;
@@ -641,7 +687,11 @@ let state = {
     playerTokens: null,
     turnDeadlineTs: null,
     turnRemainingSec: null,
-    turnDurationSec: null
+    turnDurationSec: null,
+    phase: null,
+    readyCount: 0,
+    readyTotal: 0,
+    iAmReady: false
 };
 
 let pollIntervalId = null;
@@ -706,7 +756,13 @@ async function pollOnce() {
         const currentMessages = Array.isArray(state.messages) ? state.messages : [];
         const newMsgCount = incomingMessages ? incomingMessages.length : currentMessages.length;
 
-        if (data.currentSpeaker !== state.currentSpeaker || newMsgCount !== currentMessages.length) {
+        if (
+            data.currentSpeaker !== state.currentSpeaker ||
+            newMsgCount !== currentMessages.length ||
+            data.phase !== state.phase ||
+            data.readyCount !== state.readyCount ||
+            data.readyTotal !== state.readyTotal
+        ) {
             state = { ...state, ...data };
             if (!Array.isArray(state.messages)) state.messages = currentMessages;
             if (data && data.influenceCosts) state.influenceCosts = data.influenceCosts;
@@ -735,12 +791,44 @@ function renderUI() {
     renderMessages();
     renderTurnOrder();
     updateTurnControls();
-    
-    document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound} / ${state.maxRounds}`;
+
+    const roundTitle = document.getElementById('roundTitle');
+    if (roundTitle) {
+        const base = `Negotiation Round ${state.currentRound} / ${state.maxRounds}`;
+        if (state && state.roomId && state.phase === 'ready') {
+            const rc = state.readyCount != null ? state.readyCount : 0;
+            const rt = state.readyTotal != null ? state.readyTotal : 0;
+            roundTitle.textContent = `${base} (${rc}/${rt})`;
+        } else {
+            roundTitle.textContent = base;
+        }
+    }
 
     if (state && state.outcome && !victoryShown) {
         showVictoryModal();
         victoryShown = true;
+    }
+
+    const briefModal = document.getElementById('gameBriefModal');
+    if (briefModal && !briefModal.classList.contains('hidden')) {
+        renderBrief();
+    }
+}
+
+async function markReady() {
+    if (!state || !state.roomId || !state.myPlayerId) return;
+    try {
+        const res = await fetch(`/api/rooms/${state.roomId}/ready`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId: state.myPlayerId })
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        state = { ...state, ...data };
+        renderBrief();
+        renderUI();
+    } catch (e) {
     }
 }
 
@@ -856,6 +944,38 @@ function updateTurnControls() {
     const timerBlock = document.getElementById('timerBlock');
     const timerEl = document.getElementById('turnTimer');
 
+    if (isMultiplayer && state && state.phase === 'ready') {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.remove('hidden');
+
+        if (input) {
+            input.disabled = true;
+            input.placeholder = 'Waiting for all players to start...';
+        }
+
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'WAITING';
+            sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+            sendBtn.classList.add('bg-gray-400');
+        }
+
+        zoneBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+
+        if (timerBlock) timerBlock.classList.add('hidden');
+        if (stepHint) {
+            const rc = state.readyCount != null ? state.readyCount : 0;
+            const rt = state.readyTotal != null ? state.readyTotal : 0;
+            stepHint.textContent = `Waiting for others to read (${rc}/${rt})`;
+        }
+        return;
+    }
+
     if (state && state.outcome) {
         if (statementModeRow) statementModeRow.classList.add('hidden');
         if (intentModeRow) intentModeRow.classList.add('hidden');
@@ -896,7 +1016,7 @@ function updateTurnControls() {
         tokenBadge.textContent = String(tokensNow);
     }
 
-    const shouldShowTimer = isMultiplayer && isMyTurn;
+    const shouldShowTimer = isMultiplayer && isMyTurn && state && state.phase === 'inGame' && Boolean(state.turnDeadlineTs);
     if (timerBlock) timerBlock.classList.toggle('hidden', !shouldShowTimer);
     if (!shouldShowTimer) {
         if (countdownIntervalId) {
@@ -908,6 +1028,7 @@ function updateTurnControls() {
         if (!countdownIntervalId) {
             countdownIntervalId = setInterval(() => {
                 if (!state.roomId) return;
+                if (state.phase !== 'inGame') return;
                 if (state.currentSpeaker !== state.myPlayerId) return;
 
                 const deadline = state.turnDeadlineTs;
@@ -1412,6 +1533,10 @@ window.addEventListener('load', () => {
     initializeNegotiation();
     startTurnTimer();
 });
+
+function startTurnTimer() {
+    updateTurnControls();
+}
 </script>
 
 </body>

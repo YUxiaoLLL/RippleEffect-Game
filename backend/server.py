@@ -258,6 +258,15 @@ def _get_public_room_state(room_id):
     game_state = room.get('game_state') or {}
     negotiation_state = game_state.get('negotiation_state') or {}
 
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+
     try:
         if int(negotiation_state.get('round', 1) or 1) > MAX_ROUNDS:
             _finalize_multiplayer_game_if_needed(game_state)
@@ -265,15 +274,21 @@ def _get_public_room_state(room_id):
     except Exception:
         pass
 
+    public_phase = room.get('phase', 'lobby')
+    if public_phase == 'inGame' and total_humans > 0 and ready_count < total_humans:
+        public_phase = 'ready'
+
     if negotiation_state.get('outcome'):
         return {
             'roomId': room_id,
-            'phase': room.get('phase', 'lobby'),
+            'phase': public_phase,
             'players': room.get('players', []),
             'hostId': room.get('hostId'),
             'config': room.get('config', {'maxHumans': 4, 'aiCount': 0}),
             'chapterId': room.get('chapterId'),
             'createdAt': room.get('createdAt'),
+            'readyCount': ready_count,
+            'readyTotal': total_humans,
             'turnOrder': game_state.get('turn_order', []),
             'turnIndex': game_state.get('turn_index', 0),
             'currentSpeaker': game_state.get('current_speaker'),
@@ -290,12 +305,14 @@ def _get_public_room_state(room_id):
         }
     result = {
         'roomId': room_id,
-        'phase': room.get('phase', 'lobby'),
+        'phase': public_phase,
         'players': room.get('players', []),
         'hostId': room.get('hostId'),
         'config': room.get('config', {'maxHumans': 4, 'aiCount': 0}), # Ensure config is passed
         'chapterId': room.get('chapterId'),
         'createdAt': room.get('createdAt'),
+        'readyCount': ready_count,
+        'readyTotal': total_humans,
     }
     if room.get('phase') == 'inGame' and game_state:
         result['turnOrder'] = game_state.get('turn_order', [])
@@ -1485,6 +1502,18 @@ def get_negotiation_state():
             game_state = room.get('game_state') or {}
             negotiation_state = game_state.get('negotiation_state') or {}
 
+            players = room.get('players', []) or []
+            total_humans = sum(1 for p in players if p.get('id'))
+            ready_by = room.get('readyBy') or []
+            ready_count = 0
+            try:
+                ready_count = len(set([str(x) for x in ready_by if x]))
+            except Exception:
+                ready_count = 0
+            public_phase = 'inGame'
+            if total_humans > 0 and ready_count < total_humans:
+                public_phase = 'ready'
+
             try:
                 if int(negotiation_state.get('round', 1) or 1) > MAX_ROUNDS:
                     _finalize_multiplayer_game_if_needed(game_state)
@@ -1539,10 +1568,14 @@ def get_negotiation_state():
                 'roomId': room_id,
                 'myPlayerId': player_id,
                 'isHost': is_host,
+                'phase': public_phase,
+                'readyCount': ready_count,
+                'readyTotal': total_humans,
+                'iAmReady': bool(player_id and (str(player_id) in set([str(x) for x in ready_by if x]))),
                 'turnOrder': game_state.get('turn_order', []),
                 'turnIndex': game_state.get('turn_index', 0),
                 'currentSpeaker': game_state.get('current_speaker'),
-                'turnDeadlineTs': game_state.get('turn_deadline_ts'),
+                'turnDeadlineTs': (game_state.get('turn_deadline_ts') if public_phase == 'inGame' else None),
                 'turnRemainingSec': max(0, int(math.ceil(((int(game_state.get('turn_deadline_ts') or 0)) - int(time.time() * 1000)) / 1000.0))) if game_state.get('turn_deadline_ts') else None,
                 'turnDurationSec': TURN_DURATION_SECONDS,
                 'activeZoneId': active_zone_id,
@@ -3084,6 +3117,17 @@ def _enforce_turn_timeout(room_id, room):
     if not room or room.get('phase') != 'inGame':
         return False
 
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return False
+
     game_state = room.get('game_state') or {}
     negotiation_state = game_state.get('negotiation_state') or {}
     if negotiation_state.get('outcome'):
@@ -3135,6 +3179,7 @@ def _auto_play_ai_chain(room_id, room, max_steps=None):
     issues = negotiation_state.get('issues', {}) or {}
     climate = negotiation_state.get('negotiation_climate', 50)
     zid = negotiation_state.get('active_zone_id') or 'GLOBAL'
+    negotiation_state.setdefault('last_intents', {})
 
     # Seed context with latest message if available
     last_text = ''
@@ -3178,6 +3223,17 @@ def _auto_play_ai_chain(room_id, room, max_steps=None):
         if not ai_text:
             ai_text = '...'
 
+        ai_intent = infer_active_zone_id(ai_text, negotiation_state.get('last_intents', {}).get(speaker_id) or zid)
+        if str(ai_intent).upper() not in ('A1', 'A2', 'K1'):
+            ai_intent = (negotiation_state.get('last_intents', {}).get(speaker_id) or zid)
+        ai_intent = str(ai_intent).upper() if ai_intent else str(zid).upper()
+        if ai_intent not in ('A1', 'A2', 'K1'):
+            ai_intent = 'A1'
+
+        negotiation_state['last_intents'][speaker_id] = ai_intent
+        negotiation_state['active_zone_id'] = ai_intent
+        negotiation_state['active_issue_tag'] = compute_issue_tag(ai_intent)
+
         # Add AI message to current round dialogue
         negotiation_state.setdefault('current_round_dialogue', {})
         negotiation_state['current_round_dialogue'][speaker_id] = ai_text
@@ -3185,9 +3241,10 @@ def _auto_play_ai_chain(room_id, room, max_steps=None):
         negotiation_state.setdefault('current_round_meta', {})
         ai_char = next((c for c in characters if c.get('id') == speaker_id), {})
         negotiation_state['current_round_meta'][speaker_id] = {
-            'zone_id': zid,
-            'issue_tag': compute_issue_tag(zid),
+            'zone_id': ai_intent,
+            'issue_tag': compute_issue_tag(ai_intent),
             'role_id': (ai_char or {}).get('role_id'),
+            'intent': ai_intent,
         }
 
         last_text = ai_text
@@ -3256,6 +3313,12 @@ def start_room(room_id):
 
     room['game_state'] = _build_room_game_state(room)
     room['phase'] = 'inGame'
+    room['readyBy'] = []
+    try:
+        if room.get('game_state') and room['game_state'].get('turn_deadline_ts'):
+            room['game_state']['turn_deadline_ts'] = None
+    except Exception:
+        pass
 
     # M2: Log Event
     log_event(room_id, player_id, 'GAME_STARTED', payload={'config': room.get('config')})
@@ -3263,6 +3326,58 @@ def start_room(room_id):
     socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
     socketio.emit('game_start', {'url': url_for('negotiation')}, room=room_id)
     return jsonify({'ok': True})
+
+
+@app.route('/api/rooms/<room_id>/ready', methods=['POST'])
+def mark_player_ready(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    players = room.get('players', []) or []
+    if not any(p.get('id') == player_id for p in players):
+        return jsonify({'error': 'Player not found.'}), 404
+
+    ready_by = room.get('readyBy') or []
+    if player_id not in ready_by:
+        ready_by.append(player_id)
+    room['readyBy'] = ready_by
+
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+
+    # Start turn timer when all humans are ready
+    game_state = room.get('game_state') or {}
+    if total_humans > 0 and ready_count >= total_humans and game_state:
+        if not game_state.get('turn_deadline_ts'):
+            _set_turn_deadline(game_state)
+            room['game_state'] = game_state
+
+    try:
+        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    except Exception:
+        pass
+
+    return jsonify({
+        'ok': True,
+        'phase': 'inGame' if (total_humans > 0 and ready_count >= total_humans) else 'ready',
+        'readyCount': ready_count,
+        'readyTotal': total_humans,
+        'iAmReady': True,
+    })
 
 
 @socketio.on('join_room_socket')
@@ -3344,6 +3459,17 @@ def send_message(room_id):
     if room.get('phase') != 'inGame':
         return jsonify({'error': 'Game not started.'}), 400
 
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return jsonify({'error': 'Waiting for all players to start.', 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 400
+
     _enforce_turn_timeout(room_id, room)
 
     payload = request.get_json(silent=True) or {}
@@ -3408,14 +3534,18 @@ def send_message(room_id):
     else:
         zid = infer_active_zone_id(text, negotiation_state.get('active_zone_id') or 'GLOBAL')
     
-    negotiation_state['active_zone_id'] = zid
-    negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
+    zid_norm = str(zid).upper() if zid else 'GLOBAL'
+    negotiation_state['active_zone_id'] = zid_norm
+    negotiation_state['active_issue_tag'] = compute_issue_tag(zid_norm)
+    negotiation_state.setdefault('last_intents', {})
+    if zid_norm in ('A1', 'A2', 'K1'):
+        negotiation_state['last_intents'][player_id] = zid_norm
     negotiation_state.setdefault('current_round_meta', {})
     negotiation_state['current_round_meta'][player_id] = {
-        'zone_id': zid,
+        'zone_id': zid_norm,
         'issue_tag': negotiation_state.get('active_issue_tag'),
         'role_id': role_id,
-        'intent': intent,
+        'intent': (str(intent).upper() if intent else zid_norm),
         'influence_action': influence_action,
         'influence_cost': cost
     }
@@ -3461,6 +3591,17 @@ def advance_turn(room_id):
     if room.get('phase') != 'inGame':
         return jsonify({'error': 'Game not started.'}), 400
 
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return jsonify({'error': 'Waiting for all players to start.', 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 400
+
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')
     if not player_id:
@@ -3503,6 +3644,17 @@ def timeout_turn(room_id):
 
     if room.get('phase') != 'inGame':
         return jsonify({'error': 'Game not started.'}), 400
+
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return jsonify({'timedOut': False, 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 200
 
     game_state = room.get('game_state') or {}
     negotiation_state = game_state.get('negotiation_state') or {}
@@ -3562,6 +3714,17 @@ def end_round(room_id):
 
     if room.get('phase') != 'inGame':
         return jsonify({'error': 'Game not started.'}), 400
+
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    ready_count = 0
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return jsonify({'error': 'Waiting for all players to start.', 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 400
 
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')

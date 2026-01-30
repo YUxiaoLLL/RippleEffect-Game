@@ -1150,6 +1150,8 @@ function calculateZoneCenters() {
         
         const ids = (masterplanData[zone].ids || []).map(v => String(v).trim());
         let sumX = 0, sumZ = 0, count = 0;
+        const tmpCenter = new THREE.Vector3();
+        const tmpBox = new THREE.Box3();
         
         ids.forEach(id => {
             // Find mesh with this ID (buildings or open spaces)
@@ -1163,8 +1165,17 @@ function calculateZoneCenters() {
             });
             
             if (mesh) {
-                sumX += mesh.position.x;
-                sumZ += mesh.position.z;
+                try {
+                    tmpBox.setFromObject(mesh);
+                    tmpBox.getCenter(tmpCenter);
+                    sumX += tmpCenter.x;
+                    sumZ += tmpCenter.z;
+                } catch (e) {
+                    const wp = new THREE.Vector3();
+                    mesh.getWorldPosition(wp);
+                    sumX += wp.x;
+                    sumZ += wp.z;
+                }
                 count++;
             }
         });
@@ -1177,6 +1188,27 @@ function calculateZoneCenters() {
             console.warn(`[3D] No buildings found for zone ${zone}`);
         }
     });
+}
+
+let focusState = { active: false, fromTarget: new THREE.Vector3(), fromPos: new THREE.Vector3(), toTarget: new THREE.Vector3(), toPos: new THREE.Vector3(), t0: 0, dur: 450 };
+
+function focusOnZone(zone) {
+    if (!zone) return;
+    const group = zoneIndicators[zone];
+    if (!group) return;
+
+    const target = new THREE.Vector3(group.position.x, 0, group.position.z);
+    const curTarget = controls.target.clone();
+    const curPos = camera.position.clone();
+    const offset = curPos.clone().sub(curTarget);
+    const desiredPos = target.clone().add(offset);
+
+    focusState.active = true;
+    focusState.fromTarget.copy(curTarget);
+    focusState.fromPos.copy(curPos);
+    focusState.toTarget.copy(target);
+    focusState.toPos.copy(desiredPos);
+    focusState.t0 = performance.now();
 }
 
 function createZoneArrow(label, position) {
@@ -1286,6 +1318,13 @@ window.addEventListener('message', (event) => {
         
         // Also highlight buildings
         highlightZoneBuildings(zone);
+        return;
+    }
+    if (event.data.type === 'FOCUS_ZONE') {
+        const zone = event.data.zone;
+        if (zoneIndicators && zoneIndicators[zone]) {
+            focusOnZone(zone);
+        }
     }
 });
 
@@ -1344,6 +1383,15 @@ function animate() {
   updateSunFromTime(simTime);
   
   if (typeof animateIndicators === 'function') animateIndicators(clock.getElapsedTime());
+
+  if (focusState && focusState.active) {
+    const now = performance.now();
+    const t = Math.max(0, Math.min(1, (now - focusState.t0) / focusState.dur));
+    const tt = t < 0.5 ? (2 * t * t) : (1 - Math.pow(-2 * t + 2, 2) / 2);
+    controls.target.lerpVectors(focusState.fromTarget, focusState.toTarget, tt);
+    camera.position.lerpVectors(focusState.fromPos, focusState.toPos, tt);
+    if (t >= 1) focusState.active = false;
+  }
 
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(buildings);
