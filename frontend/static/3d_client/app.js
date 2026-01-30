@@ -965,7 +965,7 @@ function updateInfoPanel(mesh) {
     panel.style.display = 'block';
 }
 
-function highlightMesh(mesh, colorHex = 0xffff00, opacity = 1.0) {
+function highlightMesh(mesh, colorHex = 0xffff00, opacity = 1.0, emissiveIntensity = 0.5) {
   // Create a clone of the original material to modify emissive or color
   // For simplicity and performance, we switch to a standard highlighting material
   // that preserves the geometry but makes it glow/pop.
@@ -973,7 +973,7 @@ function highlightMesh(mesh, colorHex = 0xffff00, opacity = 1.0) {
   const highlightMat = new THREE.MeshStandardMaterial({
     color: mesh.userData.originalMaterial.color, // Keep original color base
     emissive: colorHex,
-    emissiveIntensity: 0.5, // GLOW EFFECT
+    emissiveIntensity: emissiveIntensity, // GLOW EFFECT
     transparent: opacity < 1.0,
     opacity: opacity,
     side: THREE.DoubleSide
@@ -1265,7 +1265,7 @@ function highlightZoneBuildings(zone) {
         if (ids.includes(fid)) {
              // Determine color
              const color = zone === 'A1' ? 0xF97316 : zone === 'A2' ? 0x3B82F6 : 0x22C55E;
-             highlightMesh(mesh, color, 0.8);
+             highlightMesh(mesh, color, 0.85, 1.1);
              activeSelectionGroup.push(mesh);
         }
     });
@@ -1280,7 +1280,7 @@ function highlightZoneBuildings(zone) {
 
         if (ids.includes(id)) {
             const color = zone === 'A1' ? 0xF97316 : zone === 'A2' ? 0x3B82F6 : 0x22C55E;
-            highlightMesh(mesh, color, 0.5);
+            highlightMesh(mesh, color, 0.75, 1.25);
             activeSelectionGroup.push(mesh);
         }
     });

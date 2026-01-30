@@ -136,7 +136,7 @@
             ></iframe>
         </div>
 
-        <div id="threeLockOverlay" class="hidden absolute inset-0 z-20 bg-black/10"></div>
+        <div id="threeLockOverlay" class="hidden absolute inset-0 z-20 bg-transparent"></div>
         
         <button id="expandBtn" class="absolute top-3 right-3 p-2 bg-white/80 backdrop-blur rounded-full hover:bg-white transition-colors shadow-md z-10">
             <svg class="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,7 +256,6 @@
             <div class="text-center">
                 <div class="font-righteous text-blue-600 text-[22px] leading-tight">Meet the zones</div>
                 <div id="briefZoneText" class="font-inter text-gray-800 text-[15px] mt-3">This is A1 — Commercial.</div>
-                <div class="font-inter text-gray-500 text-[12px] mt-3">Look at the 3D scene — controls are locked for now.</div>
             </div>
 
             <div class="mt-5">
@@ -275,19 +274,10 @@
                     </div>
                 </div>
                 <div class="text-[11px] text-gray-600 px-2 text-center mt-2">A1 / A2 / K1 are the only options.</div>
+                <div class="font-inter text-gray-500 text-[12px] mt-3 text-center">Look at the 3D scene — controls are locked for now.</div>
             </div>
             <button onclick="briefNextFromZones()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
                 Got it — how do we decide?
-            </button>
-        </div>
-
-        <div id="briefStep3" class="hidden">
-            <div class="text-center">
-                <div class="font-righteous text-blue-600 text-[22px] leading-tight">Your task</div>
-                <div class="font-inter text-gray-800 text-[15px] mt-3">Your task is to present your viewpoint and persuade other players to begin construction in the area you favor</div>
-            </div>
-            <button onclick="briefNextFromTask()" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
-                OK — show me the flow
             </button>
         </div>
 
@@ -429,13 +419,11 @@ function renderBrief() {
     const card = document.getElementById('briefCard');
     const s1 = document.getElementById('briefStep1');
     const s2 = document.getElementById('briefStep2');
-    const s3 = document.getElementById('briefStep3');
     const s4 = document.getElementById('briefStep4');
     const lockOverlay = document.getElementById('threeLockOverlay');
 
     if (s1) s1.classList.toggle('hidden', briefStep !== 1);
     if (s2) s2.classList.toggle('hidden', briefStep !== 2);
-    if (s3) s3.classList.toggle('hidden', briefStep !== 3);
     if (s4) s4.classList.toggle('hidden', briefStep !== 4);
 
     if (lockOverlay) lockOverlay.classList.toggle('hidden', briefStep !== 2);
@@ -443,9 +431,9 @@ function renderBrief() {
     if (modal) {
         if (briefStep === 2) {
             modal.classList.remove('bg-black/80');
-            modal.classList.add('bg-black/30', 'items-end');
+            modal.classList.add('bg-black/10', 'items-end');
         } else {
-            modal.classList.remove('bg-black/30', 'items-end');
+            modal.classList.remove('bg-black/10', 'items-end');
             modal.classList.add('bg-black/80', 'items-center');
         }
     }
@@ -529,14 +517,9 @@ function briefNextFromGoal() {
 window.briefNextFromGoal = briefNextFromGoal;
 
 function briefNextFromZones() {
-    setBriefStep(3);
-}
-window.briefNextFromZones = briefNextFromZones;
-
-function briefNextFromTask() {
     setBriefStep(4);
 }
-window.briefNextFromTask = briefNextFromTask;
+window.briefNextFromZones = briefNextFromZones;
 
 function briefStartGame() {
     closeBrief();
