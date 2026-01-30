@@ -285,6 +285,7 @@ scene.add(transformControls);
 const urlParams = new URLSearchParams(window.location.search);
 const roomId = urlParams.get('roomId');
 const playerId = urlParams.get('playerId');
+const isFullMode = urlParams.get('mode') === 'full';
 let socket = null;
 
 if (window.io && roomId) {
@@ -793,7 +794,7 @@ function loadData() {
       initLayerUI();
       applyLayerStyles();
       
-      if (typeof calculateZoneCenters === 'function') calculateZoneCenters();
+      if (typeof ensureZoneIndicators === 'function') ensureZoneIndicators();
 
       // 4. Load other layers (async, non-blocking)
       const layers = [
@@ -1112,6 +1113,30 @@ cityGroup.add(indicatorGroup); // Fix: Add to cityGroup to match building coordi
 
 let selectedZoneIndicator = null;
 
+function resetZoneIndicators() {
+    try {
+        indicatorGroup.clear();
+    } catch (e) {
+        // ignore
+    }
+    zoneIndicators = {};
+    selectedZoneIndicator = null;
+}
+
+function ensureZoneIndicators() {
+    resetZoneIndicators();
+    calculateZoneCenters();
+    if (isFullMode) {
+        Object.values(zoneIndicators).forEach(group => {
+            group.visible = true;
+            group.scale.set(1.35, 1.35, 1.35);
+            group.children.forEach(c => {
+                if (c && c.material) c.material.opacity = 1.0;
+            });
+        });
+    }
+}
+
 function calculateZoneCenters() {
     console.log("[3D] Calculating Zone Centers...");
     // Calculate centers for A1, A2, K1 based on masterplanData
@@ -1123,14 +1148,18 @@ function calculateZoneCenters() {
             return;
         }
         
-        const ids = masterplanData[zone].ids;
+        const ids = (masterplanData[zone].ids || []).map(v => String(v).trim());
         let sumX = 0, sumZ = 0, count = 0;
         
         ids.forEach(id => {
-            // Find mesh with this ID
+            // Find mesh with this ID (buildings or open spaces)
             const mesh = buildings.find(b => {
-                const fid = b.userData.fid || String(b.userData.id);
-                return fid === id || b.userData.id === id;
+                const fid = b.userData.fid ? String(b.userData.fid).trim() : String(b.userData.id);
+                return fid === id || String(b.userData.id) === id;
+            }) || clickableObjects.find(o => {
+                if (!o || !o.userData) return false;
+                if (o.userData.type !== 'open_space') return false;
+                return String(o.userData.id || '').trim() === id;
             });
             
             if (mesh) {
@@ -1155,7 +1184,7 @@ function createZoneArrow(label, position) {
     
     // 1. Arrow Body (Cylinder)
     const col = label === 'A1' ? 0xF97316 : label === 'A2' ? 0x3B82F6 : 0x22C55E; // Orange, Blue, Green
-    const mat = new THREE.MeshBasicMaterial({ color: col });
+    const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 1.0 });
     
     const bodyGeo = new THREE.CylinderGeometry(4, 4, 20, 8); // Doubled size
     const body = new THREE.Mesh(bodyGeo, mat);
@@ -1169,7 +1198,7 @@ function createZoneArrow(label, position) {
     head.position.y = -5;
     group.add(head);
     
-    const labelText = label === 'A1' ? 'A1 — High-end Commercial' : label === 'A2' ? 'A2 — High-end Residential' : 'K1 — Affordable Housing';
+    const labelText = isFullMode ? label : (label === 'A1' ? 'A1 — High-end Commercial' : label === 'A2' ? 'A2 — High-end Residential' : 'K1 — Affordable Housing');
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 128;
@@ -1186,7 +1215,7 @@ function createZoneArrow(label, position) {
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
-    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, opacity: 1.0 });
     const sprite = new THREE.Sprite(spriteMat);
     sprite.position.set(0, 32, 0);
     sprite.scale.set(90, 22, 1);
@@ -1202,6 +1231,10 @@ function createZoneArrow(label, position) {
 }
 
 function toggleZoneIndicator(zone) {
+    if (isFullMode) {
+        selectedZoneIndicator = zone && zoneIndicators[zone] ? zone : null;
+        return;
+    }
     // Highlight selected, keep others visible but smaller
     Object.values(zoneIndicators).forEach(mesh => {
         mesh.scale.set(1, 1, 1);
@@ -1219,9 +1252,20 @@ function toggleZoneIndicator(zone) {
 
 function animateIndicators(time) {
     const bounce = Math.sin(time * 5) * 10; // +/- 10 units
+    const blink = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time * 6));
     Object.entries(zoneIndicators).forEach(([zone, mesh]) => {
         if (!mesh.visible) return;
         const baseY = typeof mesh.userData.baseY === 'number' ? mesh.userData.baseY : 120;
+        if (isFullMode) {
+            mesh.position.y = baseY + bounce;
+            mesh.rotation.y += 0.01;
+            mesh.children.forEach(c => {
+                if (c && c.material && typeof c.material.opacity === 'number') {
+                    c.material.opacity = blink;
+                }
+            });
+            return;
+        }
         if (selectedZoneIndicator && zone === selectedZoneIndicator) {
             mesh.position.y = baseY;
             mesh.rotation.y = 0;
@@ -1656,6 +1700,10 @@ function loadAndDrawLayer(url, colorOrMaterial, center, yOffset = 0) {
             cityGroup.add(mesh);
         });
         console.log("✅ Open Spaces added to scene & clickable list");
+
+        if (typeof ensureZoneIndicators === 'function') {
+            ensureZoneIndicators();
+        }
 
         if (pendingHighlightZone) {
             highlightZoneBuildings(pendingHighlightZone);

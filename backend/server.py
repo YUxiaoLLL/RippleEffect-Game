@@ -256,6 +256,38 @@ def _get_public_room_state(room_id):
         return {}
 
     game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+
+    try:
+        if int(negotiation_state.get('round', 1) or 1) > MAX_ROUNDS:
+            _finalize_multiplayer_game_if_needed(game_state)
+            negotiation_state = game_state.get('negotiation_state') or {}
+    except Exception:
+        pass
+
+    if negotiation_state.get('outcome'):
+        return {
+            'roomId': room_id,
+            'phase': room.get('phase', 'lobby'),
+            'players': room.get('players', []),
+            'hostId': room.get('hostId'),
+            'config': room.get('config', {'maxHumans': 4, 'aiCount': 0}),
+            'chapterId': room.get('chapterId'),
+            'createdAt': room.get('createdAt'),
+            'turnOrder': game_state.get('turn_order', []),
+            'turnIndex': game_state.get('turn_index', 0),
+            'currentSpeaker': game_state.get('current_speaker'),
+            'turnDeadlineTs': game_state.get('turn_deadline_ts'),
+            'turnRemainingSec': None,
+            'turnDurationSec': TURN_DURATION_SECONDS,
+            'roundIndex': negotiation_state.get('round', 1),
+            'characters': game_state.get('characters', []),
+            'stakeholders': game_state.get('characters', []),
+            'messages': [],
+            'outcome': negotiation_state.get('outcome'),
+            'winnerZone': negotiation_state.get('winner_zone'),
+            'winnerCounts': negotiation_state.get('winner_counts'),
+        }
     result = {
         'roomId': room_id,
         'phase': room.get('phase', 'lobby'),
@@ -318,6 +350,56 @@ MAX_PLAYER_TOKENS = 12  # Maximum tokens the player can hold
 BASE_LEAK_CHANCE = 0.4 # 40% chance for pressure to leak
 POLARIZATION_SPREAD_IMPACT = 4 # Impact on others if pressure leaks
 TURN_DURATION_SECONDS = 90
+
+
+def _compute_zone_winner_from_round_meta(round_meta):
+    counts = {'A1': 0, 'A2': 0, 'K1': 0}
+    if not isinstance(round_meta, dict):
+        return 'TIE', counts
+    for _, meta in round_meta.items():
+        if not isinstance(meta, dict):
+            continue
+        zid = (meta.get('intent') or meta.get('zone_id') or '')
+        zid = str(zid).upper()
+        if zid in counts:
+            counts[zid] += 1
+    max_v = max(counts.values()) if counts else 0
+    winners = [z for z, v in counts.items() if v == max_v and v > 0]
+    if len(winners) == 1:
+        return winners[0], counts
+    return 'TIE', counts
+
+
+def _finalize_multiplayer_game_if_needed(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return
+    try:
+        r = int(negotiation_state.get('round', 1) or 1)
+    except Exception:
+        r = 1
+    if r <= MAX_ROUNDS:
+        return
+
+    history_meta = negotiation_state.get('history_meta', []) or []
+    target_idx = MAX_ROUNDS - 1
+    if isinstance(history_meta, list) and len(history_meta) > target_idx:
+        final_meta = history_meta[target_idx]
+    else:
+        final_meta = history_meta[-1] if history_meta else {}
+    winner, counts = _compute_zone_winner_from_round_meta(final_meta)
+
+    negotiation_state['outcome'] = 'GAME_OVER'
+    negotiation_state['winner_zone'] = winner
+    negotiation_state['winner_counts'] = counts
+    negotiation_state['round'] = MAX_ROUNDS
+
+    game_state['current_speaker'] = None
+    game_state['turn_deadline_ts'] = None
+    game_state['turn_index'] = 0
+    game_state['negotiation_state'] = negotiation_state
 
 INFLUENCE_ACTION_COSTS = {
     "gentle_persuasion": 2,
@@ -1009,6 +1091,12 @@ def negotiation():
         try:
             action = request.form.get('action')  # Check which button was pressed
 
+            if negotiation_state.get('outcome') and action != 'give_up':
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'status': 'error', 'message': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
+                flash('Game over.', 'warning')
+                return redirect(url_for('negotiation'))
+
             if action == 'give_up':
                 negotiation_state['outcome'] = 'Player Gave Up'
                 negotiation_state['final_round'] = negotiation_state['round']  # Record when they gave up
@@ -1396,6 +1484,14 @@ def get_negotiation_state():
             _enforce_turn_timeout(room_id, room)
             game_state = room.get('game_state') or {}
             negotiation_state = game_state.get('negotiation_state') or {}
+
+            try:
+                if int(negotiation_state.get('round', 1) or 1) > MAX_ROUNDS:
+                    _finalize_multiplayer_game_if_needed(game_state)
+                    negotiation_state = game_state.get('negotiation_state') or {}
+                    room['game_state'] = game_state
+            except Exception:
+                pass
             characters = game_state.get('characters') or []
 
             player_id = session.get('player_id')
@@ -1452,6 +1548,9 @@ def get_negotiation_state():
                 'activeZoneId': active_zone_id,
                 'activeIssueTag': active_issue_tag,
                 'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
+                'outcome': negotiation_state.get('outcome'),
+                'winnerZone': negotiation_state.get('winner_zone'),
+                'winnerCounts': negotiation_state.get('winner_counts'),
             })
 
     # Single player session state
@@ -1478,6 +1577,9 @@ def get_negotiation_state():
         'activeIssueTag': active_issue_tag,
         'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
         'myPlayerId': (session.get('player_profile') or {}).get('id'), # Ensure frontend knows "me"
+        'outcome': session['negotiation_state'].get('outcome'),
+        'winnerZone': session['negotiation_state'].get('winner_zone'),
+        'winnerCounts': session['negotiation_state'].get('winner_counts'),
     })
 
 def format_history_as_messages(history, current_user_id=None, meta_history=None, characters=None):
@@ -2929,6 +3031,8 @@ def _advance_turn_state(game_state):
     Special rule: After Round 1 completes, switch from turn_order_round1 to turn_order_base.
     """
     negotiation_state = game_state.get('negotiation_state', {})
+    if negotiation_state.get('outcome'):
+        return game_state
     turn_order = game_state.get('turn_order', []) or []
     turn_index = int(game_state.get('turn_index', 0) or 0)
 
@@ -2955,9 +3059,15 @@ def _advance_turn_state(game_state):
 
         turn_index = 0
 
+        _finalize_multiplayer_game_if_needed(game_state)
+
     game_state['turn_index'] = turn_index
-    game_state['current_speaker'] = turn_order[turn_index] if turn_order and turn_index < len(turn_order) else None
-    _set_turn_deadline(game_state)
+    if (game_state.get('negotiation_state') or {}).get('outcome'):
+        game_state['current_speaker'] = None
+        game_state['turn_deadline_ts'] = None
+    else:
+        game_state['current_speaker'] = turn_order[turn_index] if turn_order and turn_index < len(turn_order) else None
+        _set_turn_deadline(game_state)
     return game_state
 
 
@@ -2975,6 +3085,9 @@ def _enforce_turn_timeout(room_id, room):
         return False
 
     game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return False
     deadline = game_state.get('turn_deadline_ts')
     speaker = game_state.get('current_speaker')
     if not speaker or not deadline:
@@ -3262,6 +3375,8 @@ def send_message(room_id):
         influence_action = 'gentle_persuasion'
 
     negotiation_state = game_state.get('negotiation_state', {})
+    if negotiation_state.get('outcome'):
+        return jsonify({'error': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
     negotiation_state.setdefault('player_action_history', {})
     action_history = negotiation_state['player_action_history'].get(player_id, [])
     cost = _compute_influence_cost(influence_action, role_id, action_history=action_history)
@@ -3328,7 +3443,10 @@ def send_message(room_id):
         'ok': True,
         'turnIndex': game_state.get('turn_index', 0),
         'currentSpeaker': game_state.get('current_speaker'),
-        'roundIndex': negotiation_state.get('round', 1)
+        'roundIndex': negotiation_state.get('round', 1),
+        'outcome': negotiation_state.get('outcome'),
+        'winnerZone': negotiation_state.get('winner_zone'),
+        'winnerCounts': negotiation_state.get('winner_counts'),
     })
 
 
@@ -3354,6 +3472,9 @@ def advance_turn(room_id):
     game_state = room.get('game_state', {})
     negotiation_state = game_state.get('negotiation_state', {})
 
+    if negotiation_state.get('outcome'):
+        return jsonify({'error': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
+
     # M2: Log Event
     log_event(room_id, player_id, 'TURN_FORCED_ADVANCE', round_idx=negotiation_state.get('round'), turn_idx=game_state.get('turn_index'))
 
@@ -3365,7 +3486,10 @@ def advance_turn(room_id):
         'ok': True,
         'turnIndex': game_state.get('turn_index', 0),
         'currentSpeaker': game_state.get('current_speaker'),
-        'roundIndex': negotiation_state.get('round', 1)
+        'roundIndex': negotiation_state.get('round', 1),
+        'outcome': negotiation_state.get('outcome'),
+        'winnerZone': negotiation_state.get('winner_zone'),
+        'winnerCounts': negotiation_state.get('winner_counts'),
     })
 
 
@@ -3381,6 +3505,20 @@ def timeout_turn(room_id):
         return jsonify({'error': 'Game not started.'}), 400
 
     game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return jsonify({
+            'ok': True,
+            'timedOut': False,
+            'turnIndex': game_state.get('turn_index', 0),
+            'currentSpeaker': game_state.get('current_speaker'),
+            'turnDeadlineTs': game_state.get('turn_deadline_ts'),
+            'turnRemainingSec': None,
+            'turnDurationSec': TURN_DURATION_SECONDS,
+            'outcome': negotiation_state.get('outcome'),
+            'winnerZone': negotiation_state.get('winner_zone'),
+            'winnerCounts': negotiation_state.get('winner_counts'),
+        })
     deadline = game_state.get('turn_deadline_ts')
     timed_out = False
     if deadline:
@@ -3393,6 +3531,7 @@ def timeout_turn(room_id):
         _enforce_turn_timeout(room_id, room)
 
     game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
     try:
         dl = int(game_state.get('turn_deadline_ts') or 0)
         remaining = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
@@ -3407,6 +3546,9 @@ def timeout_turn(room_id):
         'turnDeadlineTs': game_state.get('turn_deadline_ts'),
         'turnRemainingSec': remaining,
         'turnDurationSec': TURN_DURATION_SECONDS,
+        'outcome': negotiation_state.get('outcome'),
+        'winnerZone': negotiation_state.get('winner_zone'),
+        'winnerCounts': negotiation_state.get('winner_counts'),
     })
 
 
@@ -3452,8 +3594,13 @@ def end_round(room_id):
 
     turn_order = game_state.get('turn_order', []) or []
     game_state['turn_index'] = 0
-    game_state['current_speaker'] = turn_order[0] if turn_order else None
-    _set_turn_deadline(game_state)
+    _finalize_multiplayer_game_if_needed(game_state)
+    if (game_state.get('negotiation_state') or {}).get('outcome'):
+        game_state['current_speaker'] = None
+        game_state['turn_deadline_ts'] = None
+    else:
+        game_state['current_speaker'] = turn_order[0] if turn_order else None
+        _set_turn_deadline(game_state)
 
     _auto_play_ai_chain(room_id, room)
 
@@ -3462,7 +3609,10 @@ def end_round(room_id):
         'ok': True,
         'turnIndex': game_state.get('turn_index', 0),
         'currentSpeaker': game_state.get('current_speaker'),
-        'roundIndex': negotiation_state.get('round', 1)
+        'roundIndex': (game_state.get('negotiation_state') or {}).get('round', 1),
+        'outcome': (game_state.get('negotiation_state') or {}).get('outcome'),
+        'winnerZone': (game_state.get('negotiation_state') or {}).get('winner_zone'),
+        'winnerCounts': (game_state.get('negotiation_state') or {}).get('winner_counts'),
     })
 
 

@@ -94,8 +94,15 @@
             0%, 100% { transform: translateY(0); opacity: 0.9; }
             50% { transform: translateY(-6px); opacity: 1; }
         }
+        @keyframes arrowBlink {
+            0%, 100% { opacity: 0.15; }
+            50% { opacity: 1; }
+        }
         .onboarding-arrow {
             animation: arrowBounce 0.9s ease-in-out infinite;
+        }
+        .onboarding-arrow-active {
+            animation: arrowBounce 0.9s ease-in-out infinite, arrowBlink 0.6s ease-in-out infinite;
         }
     </style>
 </head>
@@ -375,6 +382,19 @@
     <iframe id="fullscreenFrame" src="/3d/" class="w-full h-full border-0"></iframe>
 </div>
 
+<div id="victoryModal" class="hidden fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-6">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+        <div class="text-center">
+            <div id="victoryTitle" class="font-righteous text-blue-600 text-[24px] leading-tight">Victory</div>
+            <div id="victorySubtitle" class="font-inter text-gray-800 text-[15px] mt-3"></div>
+            <div id="victoryCounts" class="font-inter text-gray-500 text-[12px] mt-2"></div>
+        </div>
+        <button id="victoryBtn" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg">
+            OK
+        </button>
+    </div>
+</div>
+
 <script>
 // --- Constants ---
 const V0_CONCERNS = {
@@ -459,7 +479,10 @@ function highlightZone(zoneId) {
         const pill = document.getElementById(`briefZone${z}`);
         if (pill) pill.classList.toggle('zone-glow', z === zoneId);
         const arrow = document.getElementById(`briefArrow${z}`);
-        if (arrow) arrow.classList.toggle('hidden', z !== zoneId);
+        if (arrow) {
+            arrow.classList.toggle('hidden', z !== zoneId);
+            arrow.classList.toggle('onboarding-arrow-active', z === zoneId);
+        }
     });
     const panel = document.getElementById('3dPanel');
     if (panel) {
@@ -503,7 +526,10 @@ function stopZoneTour() {
         const pill = document.getElementById(`briefZone${z}`);
         if (pill) pill.classList.remove('zone-glow');
         const arrow = document.getElementById(`briefArrow${z}`);
-        if (arrow) arrow.classList.add('hidden');
+        if (arrow) {
+            arrow.classList.add('hidden');
+            arrow.classList.remove('onboarding-arrow-active');
+        }
     });
     const panel = document.getElementById('3dPanel');
     if (panel) {
@@ -555,6 +581,9 @@ let state = {
     stakeholders: [],
     playerProfile: null,
     climateScore: 50,
+    outcome: null,
+    winnerZone: null,
+    winnerCounts: null,
     selectedStakeholder: null,
     is3DExpanded: false,
     roomId: null,
@@ -577,6 +606,7 @@ let state = {
 
 let pollIntervalId = null;
 let countdownIntervalId = null;
+let victoryShown = false;
 
 // Fetch initial data from Flask backend
 async function initializeNegotiation() {
@@ -603,11 +633,12 @@ async function initializeNegotiation() {
             
             if (state.roomId) {
                 const src = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=embedded`;
+                const fullSrc = `/3d/?roomId=${state.roomId}&playerId=${state.myPlayerId || ''}&mode=full`;
                 if (iframe) iframe.src = src;
-                if (fullscreenFrame) fullscreenFrame.src = src;
+                if (fullscreenFrame) fullscreenFrame.src = fullSrc;
             } else {
                  if (iframe) iframe.src = "/3d/";
-                 if (fullscreenFrame) fullscreenFrame.src = "/3d/";
+                 if (fullscreenFrame) fullscreenFrame.src = "/3d/?mode=full";
             }
 
             renderUI();
@@ -666,6 +697,47 @@ function renderUI() {
     updateTurnControls();
     
     document.getElementById('roundTitle').textContent = `Negotiation Round ${state.currentRound} / ${state.maxRounds}`;
+
+    if (state && state.outcome && !victoryShown) {
+        showVictoryModal();
+        victoryShown = true;
+    }
+}
+
+function showVictoryModal() {
+    const modal = document.getElementById('victoryModal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('victoryTitle');
+    const subtitleEl = document.getElementById('victorySubtitle');
+    const countsEl = document.getElementById('victoryCounts');
+    const btn = document.getElementById('victoryBtn');
+
+    const winner = state.winnerZone;
+    const counts = state.winnerCounts || {};
+
+    if (winner && winner !== 'TIE') {
+        if (titleEl) titleEl.textContent = `${winner} Victory`;
+        if (subtitleEl) subtitleEl.textContent = `The ${winner} camp secured the final majority.`;
+    } else {
+        if (titleEl) titleEl.textContent = 'Stalemate';
+        if (subtitleEl) subtitleEl.textContent = 'No single camp secured a clear majority.';
+    }
+
+    if (countsEl) {
+        const a1 = counts.A1 != null ? counts.A1 : 0;
+        const a2 = counts.A2 != null ? counts.A2 : 0;
+        const k1 = counts.K1 != null ? counts.K1 : 0;
+        countsEl.textContent = `A1: ${a1}   A2: ${a2}   K1: ${k1}`;
+    }
+
+    if (btn) {
+        btn.onclick = () => {
+            modal.classList.add('hidden');
+        };
+    }
+
+    modal.classList.remove('hidden');
 }
 
 // --- Turn Order Display ---
@@ -743,6 +815,34 @@ function updateTurnControls() {
     const tokenBadge = document.getElementById('tokenBadge');
     const timerBlock = document.getElementById('timerBlock');
     const timerEl = document.getElementById('turnTimer');
+
+    if (state && state.outcome) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.remove('hidden');
+
+        if (input) {
+            input.disabled = true;
+            input.placeholder = 'Game over';
+        }
+
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'DONE';
+            sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+            sendBtn.classList.add('bg-gray-400');
+        }
+
+        zoneBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+
+        if (timerBlock) timerBlock.classList.add('hidden');
+        if (stepHint) stepHint.textContent = 'Game over';
+        return;
+    }
 
     if (actionGentle && actionPressure) {
         const gentleCost = (state.influenceCosts && state.influenceCosts.gentle_persuasion != null) ? state.influenceCosts.gentle_persuasion : 2;
@@ -922,6 +1022,8 @@ function selectZone(zone) {
 async function submitTurn() {
     const messageInput = document.getElementById('messageInput');
     const textNow = messageInput.value.trim();
+
+    if (state && state.outcome) return;
 
     if (state.currentSpeaker !== state.myPlayerId) return;
 
