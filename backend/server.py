@@ -746,6 +746,7 @@ def _finalize_submission_round(game_state):
     if negotiation_state.get('outcome'):
         return
 
+    _auto_fill_ai_submissions(game_state) # Ensure AIs have submitted
     _ensure_submission_defaults(game_state)
     negotiation_state = game_state.get('negotiation_state') or {}
 
