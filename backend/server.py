@@ -863,7 +863,12 @@ def _enforce_phase_timeout(room_id, room):
         return True
 
     changed = False
+    loop_safety = 0
     while True:
+        if loop_safety > 5:
+            print(f"CRITICAL: Infinite phase loop detected in room {room_id}. Breaking.")
+            break
+        loop_safety += 1
         try:
             now_ms = int(time.time() * 1000)
             dl = int(game_state.get('phase_deadline_ts') or 0)
