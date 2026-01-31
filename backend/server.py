@@ -454,6 +454,23 @@ def _compute_influence_cost(action, role_id, action_history=None):
     return base_cost
 
 NEUTRAL_SCORE = 50 # Default neutral score
+CRITICAL_CLIMATE_THRESHOLD = 30 # Threshold for critical failure
+
+PERSONALITY_TRAITS = {
+    'assertiveness': ['Low', 'Medium', 'High'],
+    'risk_tolerance': ['Low', 'Medium', 'High'],
+    'community_orientation': ['Self-interested', 'Community-minded', 'Balanced']
+}
+
+LIFE_SITUATION_SEEDS = {
+    'age_group': ['young', 'middle-aged', 'elderly'],
+    'household': ['living alone', 'living with family', 'living with friends'],
+    'occupation': ['teacher', 'engineer', 'artist', 'retired'],
+    'identity_tag': ['local', 'newcomer', 'commuter']
+}
+
+NEGOTIATION_STYLES = ['Collaborative', 'Competitive', 'Accommodating']
+
 MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
 EVENT_PROBABILITY = 0.25  # 25% chance of an event each round
@@ -2417,6 +2434,43 @@ def _build_room_game_state(room):
         'submitted_round': 1,
     }
     return game_state
+
+
+def _regen_room_tokens(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state', {})
+    # Only regen if we just started round 2 or later (round was just incremented)
+    # The caller increments round BEFORE calling this.
+    current_round = negotiation_state.get('round', 1)
+    if current_round <= 1:
+        return
+
+    characters = game_state.get('characters', [])
+    regen_amount = TOKEN_REGEN_RATE
+    
+    for char in characters:
+        current = char.get('influence_tokens', 0)
+        max_t = char.get('max_tokens', 12)
+        char['influence_tokens'] = min(current + regen_amount, max_t)
+
+
+def _finalize_multiplayer_game_if_needed(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state', {})
+    current_round = negotiation_state.get('round', 1)
+    
+    if current_round > MAX_ROUNDS:
+        # Game Over
+        history = negotiation_state.get('history', [])
+        issues = negotiation_state.get('issues', {})
+        climate = negotiation_state.get('negotiation_climate', 50)
+        characters = game_state.get('characters', [])
+        
+        # Use the existing check_victory function
+        outcome_text = check_victory(characters, climate, issues, history)
+        negotiation_state['outcome'] = outcome_text
 
 
 def _is_ai_speaker(speaker_id, characters):
