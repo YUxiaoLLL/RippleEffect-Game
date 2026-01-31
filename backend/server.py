@@ -167,6 +167,42 @@ STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
 THREE_JS_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static', '3d_client')
 THREE_DATA_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static', '3d_data')
 
+def load_scenario_data(path):
+    try:
+        full_path = path
+        if not os.path.isabs(full_path):
+            full_path = os.path.join(PROJECT_ROOT, full_path)
+        with open(full_path, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+SCENARIO_DATA = load_scenario_data(os.path.join('scenarios', 'canadawater.json'))
+if not isinstance(SCENARIO_DATA, dict):
+    SCENARIO_DATA = {}
+
+ROLES = (SCENARIO_DATA.get('roles') or {}) if isinstance(SCENARIO_DATA, dict) else {}
+if not isinstance(ROLES, dict):
+    ROLES = {}
+
+MASTERPLAN_DATA = load_scenario_data(os.path.join('scenarios', 'masterplan.json'))
+if not isinstance(MASTERPLAN_DATA, dict):
+    MASTERPLAN_DATA = {}
+
+ONBOARDING_DATA = {}
+if not ROLES:
+    ROLES = {
+        'developer': {'name': 'Developer', 'initial_influence_tokens': 8, 'initial_trust': 50},
+        'resident_homeowner': {'name': 'Resident', 'initial_influence_tokens': 4, 'initial_trust': 50},
+        'resident_social': {'name': 'Resident (Social)', 'initial_influence_tokens': 3, 'initial_trust': 50},
+        'potential_buyer': {'name': 'Future Buyer', 'initial_influence_tokens': 3, 'initial_trust': 50},
+        'future_buyer': {'name': 'Future Buyer', 'initial_influence_tokens': 3, 'initial_trust': 50},
+        'community_activist': {'name': 'Activist', 'initial_influence_tokens': 4, 'initial_trust': 40},
+        'council_planner': {'name': 'Councilor', 'initial_influence_tokens': 7, 'initial_trust': 50},
+        'urban_designer': {'name': 'Architect', 'initial_influence_tokens': 5, 'initial_trust': 50},
+    }
+
 ZONE_FACTS, ZONE_FACT_ZONES = load_zone_facts(BASE_DIR)
 
 print(f"DEBUG: BASE_DIR: {BASE_DIR}")
