@@ -433,6 +433,24 @@ SUBMISSION_DURATION_SECONDS = 60
 TRANSITION_DURATION_SECONDS = 5
 
 
+def _max_tokens_for_role(role_id, starting_tokens):
+    try:
+        base = int(starting_tokens or 0)
+    except Exception:
+        base = 0
+
+    if base <= 0:
+        try:
+            base = int((ROLES.get(role_id) or {}).get('initial_influence_tokens', 5) or 5)
+        except Exception:
+            base = 5
+
+    try:
+        return max(1, int(base * 1.5))
+    except Exception:
+        return max(1, base)
+
+
 def _compute_zone_winner_from_round_meta(round_meta):
     counts = {'A1': 0, 'A2': 0, 'K1': 0}
     if not isinstance(round_meta, dict):
