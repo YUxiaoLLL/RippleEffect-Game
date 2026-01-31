@@ -1874,8 +1874,8 @@ def get_masterplan_data():
 
 @app.route('/game')
 def game():
-    """Unified two-column interface for negotiation + visualization."""
-    return render_template('integrated_view.html')
+    """Main game interface (Negotiation View)."""
+    return render_template('negotiation_mvp.html')
 
 
 @app.route('/negotiation')
