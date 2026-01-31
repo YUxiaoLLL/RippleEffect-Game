@@ -212,7 +212,7 @@ ROOMS = {}  # Global in-memory room storage
 MAX_ROOMS_TOTAL = 3 # M1: Limit total rooms for stability
 
 # M1: Global Access Gate
-SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '0618'
+SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '2026'
 
 @app.before_request
 def check_access():
@@ -248,6 +248,25 @@ def login():
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'ok'})
+
+
+@app.route('/chapter_selection')
+def chapter_selection():
+    return render_template('chapter_selection.html')
+
+
+@app.route('/chapter/<int:chapter_id>')
+def chapter(chapter_id):
+    if int(chapter_id) == 1:
+        return render_template('chapter_introduction.html')
+    return render_template('chapter_selection.html')
+
+
+@app.route('/role_selection', methods=['GET', 'POST'])
+def role_selection():
+    if request.method == 'POST':
+        return redirect(url_for('room_gate'))
+    return render_template('role_selection.html')
 
 def _get_public_room_state(room_id):
     """Return a sanitized view of the room state for clients."""
