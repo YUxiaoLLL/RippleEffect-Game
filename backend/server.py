@@ -416,6 +416,7 @@ STANCES = {
     "neutral": "Neutral",
     "compromise": "Compromise"
 }
+INFLUENCE_SCORES = {}
 NEUTRAL_SCORE = 50 # Default neutral score
 MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
