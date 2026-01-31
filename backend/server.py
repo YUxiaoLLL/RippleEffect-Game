@@ -2753,7 +2753,7 @@ def start_room(room_id):
     log_event(room_id, player_id, 'GAME_STARTED', payload={'config': room.get('config')})
 
     socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
-    socketio.emit('game_start', {'url': url_for('negotiation')}, room=room_id)
+    socketio.emit('game_start', {'url': url_for('game')}, room=room_id)
     return jsonify({'ok': True})
 
 
