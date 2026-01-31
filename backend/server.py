@@ -2058,7 +2058,7 @@ def get_negotiation_state():
             except Exception:
                 ready_count = 0
 
-            public_phase = 'inGame'
+            public_phase = str(game_state.get('round_phase') or 'preparation')
             if total_humans > 0 and ready_count < total_humans:
                 public_phase = 'ready'
 
@@ -2096,6 +2096,8 @@ def get_negotiation_state():
             submitted_by = game_state.get('submitted_by') or []
             has_submitted = bool(player_id and (player_id in submitted_by))
 
+            include_phase_timer = (public_phase != 'ready')
+
             return jsonify({
                 'currentRound': negotiation_state.get('round', 1),
                 'stakeholders': characters,
@@ -2127,9 +2129,9 @@ def get_negotiation_state():
                 'turnRemainingSec': None,
                 'turnDurationSec': None,
                 'roundPhase': game_state.get('round_phase'),
-                'phaseDeadlineTs': (dl if public_phase == 'inGame' else None),
-                'phaseRemainingSec': (phase_remaining if public_phase == 'inGame' else None),
-                'phaseDurationSec': (game_state.get('phase_duration_sec') if public_phase == 'inGame' else None),
+                'phaseDeadlineTs': (dl if include_phase_timer else None),
+                'phaseRemainingSec': (phase_remaining if include_phase_timer else None),
+                'phaseDurationSec': (game_state.get('phase_duration_sec') if include_phase_timer else None),
                 'hasSubmitted': has_submitted,
                 'activeZoneId': active_zone_id,
                 'activeIssueTag': active_issue_tag,

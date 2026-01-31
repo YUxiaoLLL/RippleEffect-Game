@@ -690,10 +690,6 @@ state = {
     turnDeadlineTs: null,
     turnRemainingSec: null,
     turnDurationSec: null,
-    roundPhase: null,
-    phaseDeadlineTs: null,
-    phaseRemainingSec: null,
-    phaseDurationSec: null,
     phase: null,
     readyCount: 0,
     readyTotal: 0,
@@ -752,7 +748,7 @@ async function initializeNegotiation() {
 async function pollOnce() {
     if (!state.roomId) return;
     try {
-        const prevSpeaker = state.currentSpeaker;
+        const prevPhase = state.phase;
         const res = await fetch('/api/negotiation/state');
         if (!res.ok) return;
 
@@ -768,9 +764,7 @@ async function pollOnce() {
             data.phase !== state.phase ||
             data.readyCount !== state.readyCount ||
             data.readyTotal !== state.readyTotal ||
-            data.roundPhase !== state.roundPhase ||
-            data.phaseDeadlineTs !== state.phaseDeadlineTs ||
-            data.hasSubmitted !== state.hasSubmitted
+            data.phaseDeadlineTs !== state.phaseDeadlineTs
         ) {
             state = { ...state, ...data };
             if (!Array.isArray(state.messages)) state.messages = currentMessages;
@@ -779,9 +773,19 @@ async function pollOnce() {
             if (data && (data.turnDeadlineTs != null)) state.turnDeadlineTs = data.turnDeadlineTs;
             if (data && (data.turnRemainingSec != null)) state.turnRemainingSec = data.turnRemainingSec;
             if (data && (data.turnDurationSec != null)) state.turnDurationSec = data.turnDurationSec;
+            if (data && (data.phaseDeadlineTs != null)) state.phaseDeadlineTs = data.phaseDeadlineTs;
+            if (data && (data.phaseRemainingSec != null)) state.phaseRemainingSec = data.phaseRemainingSec;
+            if (data && (data.phaseDurationSec != null)) state.phaseDurationSec = data.phaseDurationSec;
 
-            if (prevSpeaker && state.currentSpeaker === state.myPlayerId && prevSpeaker !== state.myPlayerId) {
+            if (prevPhase && prevPhase !== 'submission' && state.phase === 'submission') {
                 state.hasSubmitted = false;
+                state.turnPhase = 'statement';
+                state.statementDraft = '';
+                state.selectedIntentZone = null;
+                state.selectedInfluenceAction = null;
+                const messageInput = document.getElementById('messageInput');
+                if (messageInput) messageInput.value = '';
+                selectZone(null);
             }
 
             renderUI();
@@ -960,10 +964,11 @@ function updateTurnControls() {
     const timerBlock = document.getElementById('timerBlock');
     const timerEl = document.getElementById('turnTimer');
 
-    const roundPhase = (state && state.roundPhase) ? String(state.roundPhase) : null;
-    const inGame = Boolean(state && state.phase === 'inGame');
-    const canInteract = Boolean(inGame && (roundPhase === 'preparation' || roundPhase === 'submission'));
-    const canSubmit = Boolean(inGame && roundPhase === 'submission' && !state.hasSubmitted);
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    const inPreparation = phase === 'preparation';
+    const inReview = phase === 'review';
+    const inSubmission = phase === 'submission';
+    const inTransition = phase === 'transition';
 
     if (isMultiplayer && state && state.phase === 'ready') {
         if (statementModeRow) statementModeRow.classList.add('hidden');
@@ -1037,7 +1042,7 @@ function updateTurnControls() {
         tokenBadge.textContent = String(tokensNow);
     }
 
-    const shouldShowTimer = isMultiplayer && state && state.phase === 'inGame' && Boolean(state.phaseDeadlineTs);
+    const shouldShowTimer = isMultiplayer && !state.outcome && state && state.phase !== 'ready' && Boolean(state.phaseDeadlineTs);
     if (timerBlock) timerBlock.classList.toggle('hidden', !shouldShowTimer);
     if (!shouldShowTimer) {
         if (countdownIntervalId) {
@@ -1049,7 +1054,7 @@ function updateTurnControls() {
         if (!countdownIntervalId) {
             countdownIntervalId = setInterval(() => {
                 if (!state.roomId) return;
-                if (state.phase !== 'inGame') return;
+                if (state.phase === 'ready') return;
 
                 const deadline = state.phaseDeadlineTs;
                 let remaining = null;
@@ -1071,6 +1076,7 @@ function updateTurnControls() {
                 if (remaining <= 0) {
                     clearInterval(countdownIntervalId);
                     countdownIntervalId = null;
+
                     fetch(`/api/rooms/${state.roomId}/timeout_turn`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1080,11 +1086,58 @@ function updateTurnControls() {
             }, 250);
         }
     }
+    
+    if (inPreparation) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.remove('hidden');
 
-    if (statementModeRow) statementModeRow.classList.add('hidden');
-    if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (input) {
+            input.disabled = false;
+            input.placeholder = 'Draft your statement...';
+        }
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'PREPARATION';
+            sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+            sendBtn.classList.add('bg-gray-400');
+        }
+        zoneBtns.forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        });
+        if (stepHint) stepHint.textContent = 'Preparation — draft + pre-vote (no submission yet)';
+        return;
+    }
 
-    if (!inGame) {
+    if (inReview || inTransition) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.remove('hidden');
+
+        if (input) {
+            input.disabled = true;
+            input.placeholder = '';
+        }
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = inReview ? 'REVIEW' : 'TRANSITION';
+            sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+            sendBtn.classList.add('bg-gray-400');
+        }
+        zoneBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+        if (stepHint) stepHint.textContent = inReview ? 'Review — locked' : 'Transition...';
+        return;
+    }
+
+    if (!inSubmission) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
         if (inputModeRow) inputModeRow.classList.add('hidden');
         if (waitingModeRow) waitingModeRow.classList.remove('hidden');
         if (input) {
@@ -1105,7 +1158,9 @@ function updateTurnControls() {
         return;
     }
 
-    if (roundPhase === 'review' || roundPhase === 'transition') {
+    if (state.hasSubmitted) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
         if (inputModeRow) inputModeRow.classList.add('hidden');
         if (waitingModeRow) waitingModeRow.classList.remove('hidden');
         if (input) {
@@ -1114,7 +1169,7 @@ function updateTurnControls() {
         }
         if (sendBtn) {
             sendBtn.disabled = true;
-            sendBtn.textContent = (roundPhase === 'review') ? 'REVIEW' : 'TRANSITION';
+            sendBtn.textContent = 'SUBMITTED';
             sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
             sendBtn.classList.add('bg-gray-400');
         }
@@ -1122,11 +1177,20 @@ function updateTurnControls() {
             btn.disabled = true;
             btn.classList.add('opacity-50', 'cursor-not-allowed');
         });
-        if (stepHint) stepHint.textContent = (roundPhase === 'review') ? 'Review phase' : 'Transition';
+        if (stepHint) stepHint.textContent = 'Submitted — waiting for others';
         return;
     }
 
-    if (inputModeRow) inputModeRow.classList.remove('hidden');
+    if (!state.turnPhase || state.turnPhase === 'waiting') {
+        state.turnPhase = 'statement';
+        state.selectedInfluenceAction = state.selectedInfluenceAction || 'gentle_persuasion';
+        state.statementDraft = state.statementDraft || '';
+        state.selectedIntentZone = state.selectedIntentZone || null;
+    }
+
+    if (statementModeRow) statementModeRow.classList.toggle('hidden', state.turnPhase !== 'statement');
+    if (intentModeRow) intentModeRow.classList.toggle('hidden', state.turnPhase !== 'intent');
+    if (inputModeRow) inputModeRow.classList.toggle('hidden', state.turnPhase === 'waiting');
     if (waitingModeRow) waitingModeRow.classList.add('hidden');
 
     if (actionGentle && actionPressure) {
@@ -1137,48 +1201,51 @@ function updateTurnControls() {
         actionGentle.classList.toggle('text-white', gentleOn);
         actionPressure.classList.toggle('bg-gray-900', pressureOn);
         actionPressure.classList.toggle('text-white', pressureOn);
-        actionGentle.classList.toggle('opacity-50', !canInteract);
-        actionPressure.classList.toggle('opacity-50', !canInteract);
     }
 
     if (input) {
-        input.disabled = !canInteract;
-        input.placeholder = (roundPhase === 'preparation') ? 'Draft your statement...' : 'Type your statement...';
+        input.disabled = false;
+        input.placeholder = state.turnPhase === 'statement' ? "Type your proposal..." : "";
+    }
+    if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = state.turnPhase === 'statement' ? 'NEXT' : 'SUBMIT';
+        sendBtn.classList.remove('bg-gray-400');
+        sendBtn.classList.add('bg-gray-800', 'hover:bg-black');
     }
 
     zoneBtns.forEach(btn => {
-        btn.disabled = !canInteract || (roundPhase === 'submission' && state.hasSubmitted);
-        btn.classList.toggle('opacity-50', btn.disabled);
-        btn.classList.toggle('cursor-not-allowed', btn.disabled);
+        const enabled = state.turnPhase === 'intent';
+        btn.disabled = !enabled;
+        btn.classList.toggle('opacity-50', !enabled);
+        btn.classList.toggle('cursor-not-allowed', !enabled);
     });
 
     const currentText = (input && input.value ? input.value.trim() : '');
     const hasText = Boolean(currentText);
     const hasZone = Boolean(state.selectedIntentZone);
-    const canSubmitNow = Boolean(canSubmit && hasText && hasZone);
-
-    if (sendBtn) {
-        sendBtn.disabled = !canSubmitNow;
-        sendBtn.textContent = (roundPhase === 'submission') ? (state.hasSubmitted ? 'SUBMITTED' : 'SUBMIT') : 'PREPARING';
-        sendBtn.classList.toggle('bg-gray-400', !canSubmitNow);
-        sendBtn.classList.toggle('bg-gray-800', canSubmitNow);
-        sendBtn.classList.toggle('hover:bg-black', canSubmitNow);
+    if (stepHint) {
+        if (state.turnPhase === 'statement') stepHint.textContent = 'Step 1 / 2 — Choose how to speak + write your statement';
+        if (state.turnPhase === 'intent') stepHint.textContent = 'Step 2 / 2 — Place your intent marker (choose a zone)';
     }
 
-    if (stepHint) {
-        if (roundPhase === 'preparation') stepHint.textContent = 'Preparation phase';
-        if (roundPhase === 'submission') stepHint.textContent = state.hasSubmitted ? 'Submitted — waiting for others' : 'Submission & Vote';
+    if (state.turnPhase === 'statement' && sendBtn) {
+        sendBtn.disabled = !hasText;
+    }
+    if (state.turnPhase === 'intent' && sendBtn) {
+        sendBtn.disabled = !hasZone;
     }
 }
 
 // --- Interaction ---
 function selectZone(zone) {
-    if (!state) return;
-    if (!state.roomId) return;
-    if (state.phase !== 'inGame') return;
-    const rp = String(state.roundPhase || '');
-    if (!(rp === 'preparation' || rp === 'submission')) return;
-    if (rp === 'submission' && state.hasSubmitted) return;
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase === 'submission') {
+        if (state.hasSubmitted) return;
+        if (state.turnPhase !== 'intent') return;
+    } else if (phase !== 'preparation') {
+        return;
+    }
 
     state.selectedIntentZone = zone;
     
@@ -1211,50 +1278,18 @@ async function submitTurn() {
 
     if (state && state.outcome) return;
 
-    if (state.roomId) {
-        if (state.phase !== 'inGame') return;
-        if (String(state.roundPhase || '') !== 'submission') return;
-        if (state.hasSubmitted) return;
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase !== 'submission') return;
+    if (state.hasSubmitted) return;
 
-        const text = textNow.trim();
-        const intent = state.selectedIntentZone;
-        if (!text) {
+    if (state.turnPhase === 'statement') {
+        if (!textNow) {
             alert("Please write your argument first.");
             return;
         }
-        if (!intent) {
-            alert("Please select a Target Zone (A1, A2, or K1).");
-            return;
-        }
-
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.disabled = true;
-        sendBtn.innerText = "SENDING...";
-
-        try {
-            const url = `/api/rooms/${state.roomId}/send`;
-            const body = JSON.stringify({
-                playerId: state.myPlayerId,
-                text: text,
-                intent: intent,
-                influenceAction: state.selectedInfluenceAction || null
-            });
-            const headers = { 'Content-Type': 'application/json' };
-
-            const res = await fetch(url, { method: 'POST', headers, body });
-            if (res.ok) {
-                state.hasSubmitted = true;
-                messageInput.value = '';
-                await pollOnce();
-                updateTurnControls();
-            } else {
-                const err = await res.json();
-                alert("Error: " + (err.message || "Failed to submit."));
-            }
-        } catch (e) {
-            console.error("Submit error", e);
-            alert("Failed to submit.");
-        }
+        state.statementDraft = textNow;
+        state.turnPhase = 'intent';
+        updateTurnControls();
         return;
     }
 
@@ -1341,19 +1376,19 @@ window.addEventListener('message', (event) => {
 });
 
 document.getElementById('action-gentle').addEventListener('click', () => {
-    if (!state) return;
-    if (state.phase !== 'inGame') return;
-    const rp = String(state.roundPhase || '');
-    if (!(rp === 'preparation' || rp === 'submission')) return;
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase !== 'submission') return;
+    if (state.hasSubmitted) return;
+    if (state.turnPhase !== 'statement') return;
     state.selectedInfluenceAction = 'gentle_persuasion';
     updateTurnControls();
 });
 
 document.getElementById('action-pressure').addEventListener('click', () => {
-    if (!state) return;
-    if (state.phase !== 'inGame') return;
-    const rp = String(state.roundPhase || '');
-    if (!(rp === 'preparation' || rp === 'submission')) return;
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase !== 'submission') return;
+    if (state.hasSubmitted) return;
+    if (state.turnPhase !== 'statement') return;
     state.selectedInfluenceAction = 'pressure_opponent';
     updateTurnControls();
 });
