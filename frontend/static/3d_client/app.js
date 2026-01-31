@@ -1152,6 +1152,8 @@ function calculateZoneCenters() {
         let sumX = 0, sumZ = 0, count = 0;
         const tmpCenter = new THREE.Vector3();
         const tmpBox = new THREE.Box3();
+        const unionBox = new THREE.Box3();
+        let hasUnion = false;
         
         ids.forEach(id => {
             // Find mesh with this ID (buildings or open spaces)
@@ -1170,6 +1172,12 @@ function calculateZoneCenters() {
                     tmpBox.getCenter(tmpCenter);
                     sumX += tmpCenter.x;
                     sumZ += tmpCenter.z;
+                    if (!hasUnion) {
+                        unionBox.copy(tmpBox);
+                        hasUnion = true;
+                    } else {
+                        unionBox.union(tmpBox);
+                    }
                 } catch (e) {
                     const wp = new THREE.Vector3();
                     mesh.getWorldPosition(wp);
@@ -1181,7 +1189,14 @@ function calculateZoneCenters() {
         });
         
         if (count > 0) {
-            const center = new THREE.Vector3(sumX / count, 120, sumZ / count); // Increased height to 120
+            let cx = sumX / count;
+            let cz = sumZ / count;
+            if (hasUnion) {
+                unionBox.getCenter(tmpCenter);
+                cx = tmpCenter.x;
+                cz = tmpCenter.z;
+            }
+            const center = new THREE.Vector3(cx, 120, cz); // Increased height to 120
             console.log(`[3D] Created Arrow for ${zone} at`, center);
             createZoneArrow(zone, center);
         } else {

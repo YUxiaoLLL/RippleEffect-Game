@@ -2952,6 +2952,7 @@ def _build_room_game_state(room):
     print(f"DEBUG: Room {room.get('id')} Config - AI Count: {ai_count}, Max Humans: {room.get('config', {}).get('maxHumans')}")
     
     ai_id_counter = 0
+    used_names = set([str(c.get('name') or '').strip() for c in characters if c.get('name')])
     
     # Fill remaining slots with AI up to ai_count
     for i in range(ai_count):
@@ -2974,11 +2975,21 @@ def _build_room_game_state(room):
         description = role_data.get('description', onboarding_role_data.get('description', ''))
         trust = role_data.get('initial_trust', INITIAL_TRUST)
 
+        ai_name = random.choice(SAMPLE_NAMES) if SAMPLE_NAMES else 'AI'
+        if ai_name in used_names:
+            tries = 0
+            while tries < 20 and ai_name in used_names:
+                ai_name = random.choice(SAMPLE_NAMES) if SAMPLE_NAMES else 'AI'
+                tries += 1
+            if ai_name in used_names:
+                ai_name = f"{ai_name} {ai_id_counter + 1}"
+        used_names.add(ai_name)
+
         ai_profile = {
             'id': f"ai_room_{ai_id_counter}",
             'role_id': role_id,
             'role_name': role_name,
-            'name': random.choice(SAMPLE_NAMES),
+            'name': ai_name,
             'is_player': False,
             'influence': INFLUENCE_SCORES.get(role_id, 1),
             'initial_stance': STANCES['neutral'],
