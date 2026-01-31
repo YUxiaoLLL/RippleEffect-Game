@@ -318,13 +318,17 @@ def _get_public_room_state(room_id):
         result['turnOrder'] = game_state.get('turn_order', [])
         result['turnIndex'] = game_state.get('turn_index', 0)
         result['currentSpeaker'] = game_state.get('current_speaker')
-        result['turnDeadlineTs'] = game_state.get('turn_deadline_ts')
+        result['turnDeadlineTs'] = None
+        result['roundPhase'] = game_state.get('round_phase')
+        result['phaseDeadlineTs'] = game_state.get('phase_deadline_ts')
+        result['phaseDurationSec'] = game_state.get('phase_duration_sec')
         try:
-            dl = int(game_state.get('turn_deadline_ts') or 0)
-            result['turnRemainingSec'] = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
+            dl = int(game_state.get('phase_deadline_ts') or 0)
+            result['phaseRemainingSec'] = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
         except Exception:
-            result['turnRemainingSec'] = None
-        result['turnDurationSec'] = TURN_DURATION_SECONDS
+            result['phaseRemainingSec'] = None
+        result['turnRemainingSec'] = None
+        result['turnDurationSec'] = None
         result['roundIndex'] = (game_state.get('negotiation_state') or {}).get('round', 1)
         result['characters'] = game_state.get('characters', [])
         result['stakeholders'] = result['characters'] # Alias for frontend compatibility
@@ -368,6 +372,11 @@ BASE_LEAK_CHANCE = 0.4 # 40% chance for pressure to leak
 POLARIZATION_SPREAD_IMPACT = 4 # Impact on others if pressure leaks
 TURN_DURATION_SECONDS = 90
 
+PREPARATION_DURATION_SECONDS = 120
+REVIEW_DURATION_SECONDS = 60
+SUBMISSION_DURATION_SECONDS = 60
+TRANSITION_DURATION_SECONDS = 5
+
 
 def _compute_zone_winner_from_round_meta(round_meta):
     counts = {'A1': 0, 'A2': 0, 'K1': 0}
@@ -387,1234 +396,6 @@ def _compute_zone_winner_from_round_meta(round_meta):
     return 'TIE', counts
 
 
-def _finalize_multiplayer_game_if_needed(game_state):
-    if not game_state:
-        return
-    negotiation_state = game_state.get('negotiation_state') or {}
-    if negotiation_state.get('outcome'):
-        return
-    try:
-        r = int(negotiation_state.get('round', 1) or 1)
-    except Exception:
-        r = 1
-    if r <= MAX_ROUNDS:
-        return
-
-    history_meta = negotiation_state.get('history_meta', []) or []
-    target_idx = MAX_ROUNDS - 1
-    if isinstance(history_meta, list) and len(history_meta) > target_idx:
-        final_meta = history_meta[target_idx]
-    else:
-        final_meta = history_meta[-1] if history_meta else {}
-    winner, counts = _compute_zone_winner_from_round_meta(final_meta)
-
-    negotiation_state['outcome'] = 'GAME_OVER'
-    negotiation_state['winner_zone'] = winner
-    negotiation_state['winner_counts'] = counts
-    negotiation_state['round'] = MAX_ROUNDS
-
-    game_state['current_speaker'] = None
-    game_state['turn_deadline_ts'] = None
-    game_state['turn_index'] = 0
-    game_state['negotiation_state'] = negotiation_state
-
-INFLUENCE_ACTION_COSTS = {
-    "gentle_persuasion": 2,
-    "pressure_opponent": 4,
-    "strong_persuasion": 6,
-    "ally_recruitment": 8
-}
-INFLUENCE_ACTION_EFFECTS = {
-    # Stance delta is towards player's general alignment (support/oppose project)
-    # Needs refinement - assumes player wants to pull target towards their stance.
-    # Simple approach: Positive delta = more support, Negative delta = more opposition.
-    # TODO: Make delta relative to player's stance vs target's stance.
-    "gentle_persuasion": {"stance_delta": 5, "trust_delta": 2, "history_log": "gently persuaded"},
-    "strong_persuasion": {"stance_delta": 15, "trust_delta": 10, "history_log": "strongly persuaded"},
-    "ally_recruitment": {"stance_delta": 0, "trust_delta": 15, "history_log": "tried to recruit"},
-    # Focus on trust gain for now
-    "pressure_opponent": {"stance_delta": -10, "trust_delta": -15, "history_log": "pressured"},
-    # Makes target more opposed/less supportive
-}
-
-def _action_short_key(action):
-    key_map = {
-        "gentle_persuasion": "gentle",
-        "strong_persuasion": "strong",
-        "pressure_opponent": "pressure",
-        "ally_recruitment": "recruit"
-    }
-    return key_map.get(action, action)
-
-
-def _compute_influence_cost(action, role_id, action_history=None):
-    base_cost = INFLUENCE_ACTION_COSTS.get(action)
-    if base_cost is None:
-        return None
-
-    role_data = ROLES.get(role_id) or {}
-    token_modifiers = role_data.get('token_modifiers', {}) or {}
-    modifier = float(token_modifiers.get(_action_short_key(action), 1.0) or 1.0)
-    final_cost = base_cost * modifier
-
-    if action == 'pressure_opponent' and action_history:
-        try:
-            if action_history[-1] == 'pressure_opponent':
-                final_cost += 2
-        except Exception:
-            pass
-
-    return int(math.ceil(final_cost))
-
-
-def _max_tokens_for_role(role_id, starting_tokens):
-    try:
-        starting_tokens = int(starting_tokens or 0)
-    except Exception:
-        starting_tokens = 0
-
-    if starting_tokens <= 0:
-        starting_tokens = int((ROLES.get(role_id) or {}).get('initial_influence_tokens', 5) or 5)
-    return max(1, int(math.floor(starting_tokens * 1.5)))
-
-
-def _regen_room_tokens(game_state):
-    negotiation_state = game_state.get('negotiation_state') or {}
-    current_round = int(negotiation_state.get('round', 1) or 1)
-    if current_round <= 1:
-        return
-
-    characters = game_state.get('characters') or []
-    for char in characters:
-        role_id = char.get('role_id')
-        starting = char.get('starting_influence_tokens', char.get('influence_tokens', 0))
-        max_tokens = _max_tokens_for_role(role_id, starting)
-        char['max_tokens'] = max_tokens
-
-        current_tokens = int(char.get('influence_tokens', 0) or 0)
-        regen = 1
-        if char.get('is_player'):
-            regen = TOKEN_REGEN_RATE
-
-        char['influence_tokens'] = min(current_tokens + regen, max_tokens)
-
-    game_state['characters'] = characters
-    return
-INITIAL_SUPPORT_SCORE = 75
-INITIAL_NEUTRAL_SCORE = 50
-INITIAL_OPPOSE_SCORE = 25
-INFLUENCE_SCORES = {
-    "developer": 3,
-    "resident_homeowner": 2,
-    "resident_social": 2,
-    "future_buyer": 2,
-    "community_activist": 2,
-    "council_planner": 3,
-    "urban_designer": 2
-}
-VICTORY_CONSENSUS_THRESHOLD = 6  # 6 out of 10 participants
-VICTORY_INFLUENCE_THRESHOLD = 9
-FAILURE_SUPPORT_THRESHOLD = 2  # Player + 2 others minimum to avoid instant failure
-CONSENSUS_THRESHOLD_PERCENT = 0.60  # 60% of participants must be 'Support'
-INFLUENCE_THRESHOLD_PERCENT = 0.60  # 60% of *total influence* must come from 'Support'
-FAILURE_SUPPORT_THRESHOLD_PERCENT = 0.25  # If 'Support' participants are <= 25%, it's a failure
-CRITICAL_CLIMATE_THRESHOLD = 20  # If climate drops <= 20, it's a failure
-
-# Sample names for AI characters
-SAMPLE_NAMES = ["Alex", "Ben", "Casey", "Devin", "Erin", "Frankie", "Gabby", "Hayden", "Izzy", "Jamie", "Fatima Ahmed", "David Chen", "Maria Garcia", "Kenji Tanaka", "Chloe Dubois"]
-
-STANCE_MATRIX = {
-    'community_activist': {
-        'K1': [
-            'Emphasize allocation fairness, anti-displacement safeguards, and transparent management rules.',
-            'Reject vague promises; demand explicit eligibility rules and long-term affordability protections.',
-        ],
-        'A1': [
-            'Demand enforceable local benefit commitments tied to the workspace delivery.',
-            'Question who benefits from jobs and what protections exist against displacement.',
-        ],
-        'A2': [
-            'Insist leisure centre access is equitable (pricing, hours, eligibility) and enforceable.',
-            'Tie jobs/workspace commitments to training and local hiring.',
-        ],
-    },
-    'council_planner': {
-        'K1': [
-            'Focus on compliance, allocation criteria, measurable rules, and governance.',
-            'Offer executable thresholds and reporting requirements to maintain trust.',
-        ],
-        'A1': [
-            'Frame commitments as conditions of approval with monitoring and enforcement.',
-        ],
-        'A2': [
-            'Define access/pricing rules for the leisure centre and measurable local benefit commitments.',
-        ],
-    },
-    'developer': {
-        'K1': [
-            'Emphasize feasibility, delivery risk, phasing, and costs; propose trade-offs and delivery constraints.',
-            'Avoid taking credit; position as responsible delivery partner with clear commitments.',
-        ],
-        'A1': [
-            'Use workspace delivery and ground-floor activation to justify jobs and footfall; mention phasing and feasibility.',
-        ],
-        'A2': [
-            'Balance leisure centre operations with commercial viability; mention peak-time management and delivery risk.',
-        ],
-    },
-    'resident_homeowner': {
-        'K1': [
-            'Focus on livability, fairness, and trust: who benefits, and how does this affect existing residents?',
-        ],
-        'A1': [
-            'Focus on noise, congestion, shadows, and day-to-day disruption; demand mitigations and timing limits.',
-        ],
-        'A2': [
-            'Focus on crowding, safety, congestion, and noise; require operational rules and enforcement.',
-        ],
-    },
-    'urban_designer': {
-        'A1': [
-            'Anchor arguments in public realm continuity, edges, permeability, and frontage quality.',
-        ],
-        'A2': [
-            'Discuss how mixed uses are organized to reduce conflict; focus on access, transitions, and safety.',
-        ],
-        'K1': [
-            'Focus on tenure security communicated through design and management, and how public realm builds trust.',
-        ],
-    },
-    'potential_buyer': {
-        'A1': [
-            'Focus on safety, amenity, and long-term value but stay grounded in concrete commitments.',
-        ],
-        'A2': [
-            'Focus on quality of life and management of crowds; ask for clear operating rules.',
-        ],
-        'K1': [
-            'Focus on neighborhood stability and fairness; ask how the plan avoids conflict and builds trust.',
-        ],
-    },
-}
-
-ROLE_VOICE_KEYWORDS = {
-    'community_activist': ['demand', 'require', 'must', 'guarantee', 'commit', 'enforce'],
-    'developer': ['feasible', 'deliver', 'delivery', 'timeline', 'phasing', 'cost', 'budget', 'risk'],
-    'council_planner': ['policy', 'criteria', 'allocation', 'compliance', 'threshold', 'monitoring', 'enforcement', 'metric'],
-    'resident_homeowner': ['noise', 'traffic', 'rent', 'safety', 'crowd', 'parking', 'disruption'],
-    'urban_designer': ['public realm', 'permeability', 'frontage', 'edges', 'interface', 'access', 'street'],
-    'potential_buyer': ['value', 'safety', 'schools', 'investment', 'market', 'quality'],
-}
-
-# --- Personality Seed System Data ---
-PERSONALITY_TRAITS = {
-    'assertiveness': ['low', 'medium', 'high'],
-    'risk_tolerance': ['low', 'medium', 'high'],
-    'community_orientation': ['individualist', 'balanced', 'collectivist']
-}
-LIFE_SITUATION_SEEDS = {
-    'age_group': ['young (20-35)', 'middle-aged (35-55)', 'older (55+)'],
-    'household': ['is single', 'is part of a couple', 'has a family', 'is retired'],
-    'occupation': ['a clerical worker', 'a professional', 'a creative', 'a service worker', 'unemployed'],
-    'identity_tag': ['has lived here 20 years', 'is a new arrival', 'is a local artist', 'commutes to the city', 'owns a local business']
-}
-NEGOTIATION_STYLES = ['analytical', 'emotional', 'strategic', 'pragmatic', 'confrontational', 'conciliatory']
-
-# --- Load Game Data from Scenario File ---
-def load_scenario_data(filename):
-    with open(filename, 'r') as f:
-        data = json.load(f)
-    return data
-
-SCENARIO_DATA = load_scenario_data(os.path.join('scenarios', 'canadawater.json'))
-MASTERPLAN_DATA = load_scenario_data(os.path.join('scenarios', 'masterplan.json')) # Load Masterplan Data for Backend & AI
-
-ROLES = SCENARIO_DATA.get('roles', {})
-MICRO_EVENTS = SCENARIO_DATA.get('micro_events', [])
-CONTEXT = SCENARIO_DATA.get('context', {})
-
-# --- Onboarding Data (Added from Design Phase) ---
-ONBOARDING_DATA = {
-    "council_planner": {
-        "theme": "light",
-        "role_name": "Councilor",
-        "description": "Primary Concern: Final confirmation of 'activation legitimacy'. You must ensure the chosen zone follows due process.",
-        "v0_concern": "Final confirmation of 'activation legitimacy'.",
-        "v0_power": "You hold the final vote on regulatory approval.",
-        "v0_persuasion": "Persuade the Activist that the process is fair.",
-        "tasks": ["Weigh proposals", "Mediate conflicts", "Cast decisive votes"],
-        "tokens": 7,
-        "portrait": "councilor_portrait.png",
-        "mirror_portrait": True,
-        "background_style": "organic_shapes"
-    },
-    "resident_homeowner": {
-        "theme": "light",
-        "role_name": "Resident",
-        "description": "Primary Concern: Which zone activation disturbs daily life the least? You want to minimize noise and disruption.",
-        "v0_concern": "Which zone activation disturbs daily life the least?",
-        "v0_power": "You can organize local opposition (Nimby power).",
-        "v0_persuasion": "Persuade the Council Planner to protect local amenities.",
-        "tasks": ["Express concerns", "Protect livability", "Propose alternatives"],
-        "tokens": 4,
-        "portrait": "resident_portrait.png",
-        "mirror_portrait": True,
-        "background_style": "plain_white"
-    },
-    "developer": {
-        "theme": "dark",
-        "role_name": "Developer",
-        "description": "Primary Concern: Which zone activation brings maximum early return? You need cash flow to fund the rest.",
-        "v0_concern": "Which zone activation brings maximum early return?",
-        "v0_power": "You control the investment timeline and budget.",
-        "v0_persuasion": "Persuade the Buyer that value is guaranteed.",
-        "tasks": ["Optimize for return", "Justify trade-offs", "Ensure feasibility"],
-        "tokens": 8,
-        "portrait": "developer_portrait.png",
-        "mirror_portrait": False,
-        "background_style": "marble"
-    },
-    "community_activist": {
-        "theme": "light",
-        "role_name": "Activist",
-        "description": "Primary Concern: Which zone activation poses the greatest risk? You are watching for displacement and environmental damage.",
-        "v0_concern": "Which zone activation poses the greatest risk?",
-        "v0_power": "You can mobilize public protest and media attention.",
-        "v0_persuasion": "Persuade the Resident to join your cause.",
-        "tasks": ["Identify risks", "Mobilize community", "Demand safeguards"],
-        "tokens": 4,
-        "portrait": "activist_portrait.png",
-        "mirror_portrait": False,
-        "background_style": "full_texture"
-    },
-    "potential_buyer": {
-        "theme": "light",
-        "role_name": "Future Buyer",
-        "description": "Primary Concern: Which zone activation maximizes property value? You want a safe, high-value investment.",
-        "v0_concern": "Which zone activation maximizes property value?",
-        "v0_power": "You represent the market demand.",
-        "v0_persuasion": "Persuade the Developer to prioritize quality over speed.",
-        "tasks": ["Assess value", "Evaluate quality", "Support stability"],
-        "tokens": 3,
-        "portrait": "buyer_portrait.png",
-        "mirror_portrait": False,
-        "background_style": "organic_shapes_buyer"
-    },
-    "urban_designer": {
-        "theme": "light",
-        "role_name": "Architect",
-        "description": "Primary Concern: Which zone activation maximizes future design potential? You want to unlock the best spatial opportunities.",
-        "v0_concern": "Which zone activation maximizes future design potential?",
-        "v0_power": "You shape the physical vision and feasibility.",
-        "v0_persuasion": "Persuade the Developer to innovate.",
-        "tasks": ["Create functionality", "Balance needs", "Design connections"],
-        "tokens": 5,
-        "portrait": "architect_portrait.png",
-        "mirror_portrait": False,
-        "background_style": "architect_texture"
-    }
-}
-
-@app.route('/onboarding')
-def onboarding():
-    role_id = session.get('player_role_id')
-    if not role_id or role_id not in ONBOARDING_DATA:
-        return redirect(url_for('role_selection'))
-    
-    data = ONBOARDING_DATA[role_id]
-    return render_template('onboarding.html', role=data)
-
-@app.route('/customization', methods=['GET', 'POST'])
-def customization():
-    role_id = session.get('player_role_id')
-    if not role_id or role_id not in ONBOARDING_DATA:
-        return redirect(url_for('role_selection'))
-    
-    data = ONBOARDING_DATA[role_id]
-    
-    if request.method == 'POST':
-        # 1. Create Player Profile
-        session['player_profile'] = {
-            'role_id': role_id,
-            'role_name': data['role_name'],
-            'portrait': data['portrait'],
-            'local_resident': request.form.get('local_resident') == 'on',
-            'age': request.form.get('age'),
-            'has_children': request.form.get('has_children') == 'on',
-            'backstory': request.form.get('backstory'),
-            
-            # Game Mechanics Data
-            'influence_tokens': data['tokens'],
-            'max_tokens': 12,
-            'stance_score': 50, # Default neutral
-            'initial_stance': 'Support', # Default own stance
-            'trust_value': 50,
-            'influence': INFLUENCE_SCORES.get(role_id, 2),
-            'id': 'player_0',
-            'is_player': True,
-            'name': "You" # Or fetch name if we add that field back
-        }
-        
-        # 2. Generate AI Opponents
-        # We need to ensure generate_ai_opponents is available. 
-        # If it's defined later in the file, this call works.
-        ai_opponents = generate_ai_opponents(role_id)
-        
-        # Set initial stances for AI
-        for opponent in ai_opponents:
-            opponent['stance'] = get_stance_category(opponent['stance_score'])
-            
-        all_characters = ai_opponents + [session['player_profile']]
-        random.shuffle(all_characters)
-        session['characters'] = all_characters
-
-        # 3. Initialize Negotiation State
-        # Import constraint helpers here (lazy import to avoid circular dep if any)
-        
-        # Create default constraint state (defaults are already 35/40/30 in the class)
-        default_c_state = ConstraintState()
-        
-        session['negotiation_state'] = {
-            'round': 1,
-            'history': [],
-            'history_meta': [],
-            'outcome': None,
-            'negotiation_climate': 50,
-            'active_zone_id': 'GLOBAL',
-            'active_issue_tag': compute_issue_tag('GLOBAL'),
-            'issues': {
-                'affordable_share': 35,
-                'cultural_venue_scale': 'medium',
-                'housing_location_mix': 'balanced'
-            },
-            'constraint_state': state_to_dict(default_c_state),
-            'constraint_last': {},
-            'current_round_dialogue': {},
-            'current_round_meta': {},
-        }
-        
-        # 4. Start Game
-        return redirect(url_for('home_gaming'))
-
-    return render_template('customization.html', role=data)
-
-# ROLES = {
-#     "developer": {
-#         "name": "Developer",
-#         "description": "Represents the company planning the new development project.",
-#         "objective": "Maximize profit while meeting minimum regulatory requirements.",
-#         "influence": "Significant financial backing, technical expertise.",
-#         "stance_distribution": {STANCES["support"]: 8, STANCES["neutral"]: 2},  # 80% support, 20% neutral
-#         "initial_influence_tokens": 6,  # Updated
-#         "initial_trust": INITIAL_TRUST
-#     },
-#     "local_resident": {
-#         "name": "Local Resident",
-#         "description": "Lives in the neighborhood affected by the development.",
-#         "objective": "Preserve community character, minimize disruption, ensure fair compensation.",
-#         "influence": "Community support, personal stakes.",
-#         "stance_distribution": {STANCES["oppose"]: 6, STANCES["neutral"]: 4},  # 60% oppose, 40% neutral
-#         "initial_influence_tokens": 2,  # Updated
-#         "initial_trust": INITIAL_TRUST
-#     },
-#     "council_member": {
-#         "name": "Council Member",
-#         "description": "An elected official responsible for representing constituent interests.",
-#         "objective": "Balance development benefits with community impact, uphold regulations.",
-#         "influence": "Political network, regulatory power.",
-#         "stance_distribution": {STANCES["neutral"]: 7, STANCES["support"]: 2, STANCES["oppose"]: 1},
-#         # 70% neutral, 20% support, 10% oppose
-#         "initial_influence_tokens": 5,  # Updated
-#         "initial_trust": INITIAL_TRUST
-#     },
-#     "student_representative": {
-#         "name": "Student Representative",
-#         "description": "Advocates for student housing and campus-related needs.",
-#         "objective": "Secure affordable housing options, improve campus accessibility.",
-#         "influence": "Represents a large demographic, potential for mobilization.",
-#         "stance_distribution": {STANCES["neutral"]: 5, STANCES["support"]: 4, STANCES["oppose"]: 1},
-#         # 50% neutral, 40% support, 10% oppose
-#         "initial_influence_tokens": 3,  # Updated
-#         "initial_trust": INITIAL_TRUST
-#     }
-# }
-
-# Micro-Story Events
-# --- OLD ARCHWAY SCENARIO DATA (COMMENTED OUT) ---
-# MICRO_EVENTS = [
-#     {
-#         "id": "newspaper_scandal",
-#         "text": "Islington Daily exposes potential irregularities in the developer's past projects! Public trust wavers.",
-#         "effects": {"target": "role", "role_id": "local_resident", "stance_delta": -15, "climate_delta": -5}
-#     },
-#     {
-#         "id": "student_subsidy",
-#         "text": "The city government announces a surprise student housing subsidy program, boosting student optimism!",
-#         "effects": {"target": "role", "role_id": "student_representative", "stance_delta": +15, "climate_delta": +5}
-#     },
-#     {
-#         "id": "resident_emergency",
-#         "text": "A key Local Resident representative has a sudden family emergency and must skip this round's discussion.",
-#         "effects": {"target": "role_specific", "role_id": "local_resident", "skip_round": True}
-#         # Target one specific resident
-#     },
-#     {
-#         "id": "unexpected_endorsement",
-#         "text": "A respected independent urban planning group unexpectedly endorses the project's core ideas!",
-#         "effects": {"target": "all", "stance_delta": +10, "climate_delta": +10}
-#     },
-#     {
-#         "id": "developer_concession",
-#         "text": "The Developer offers a minor concession regarding green spaces in the plan.",
-#         "effects": {"target": "role", "role_id": "developer", "stance_delta": +5, "climate_delta": +5}
-#         # Small boost to developer's perceived score by others
-#     },
-#     {
-#         "id": "budget_cuts_rumor",
-#         "text": "Rumors circulate about potential city budget cuts impacting infrastructure needed for the project.",
-#         "effects": {"target": "all", "stance_delta": -5, "climate_delta": -10}
-#     },
-# ]
-
-
-def trigger_and_apply_event(characters, climate_score, current_round):
-    """
-    Checks if a random event should trigger based on EVENT_PROBABILITY.
-    If triggered, selects a random event, applies its effects to characters
-    and climate score, and returns the updated state and event text.
-    Handles stance clamping (0-100) and skip_round effect.
-    """
-    event_triggered_info = None
-    event_text = None
-
-    if random.random() < EVENT_PROBABILITY:
-        chosen_event = random.choice(MICRO_EVENTS)
-        event_text = f"**Event Occurred (Round {current_round}):** {chosen_event['text']}"
-        effects = chosen_event['effects']
-        event_triggered_info = chosen_event  # Store for potential later use/logging
-        print(f"--- EVENT TRIGGERED: {chosen_event['id']} ---")  # Server log
-
-        # Apply climate delta
-        climate_delta = effects.get('climate_delta', 0)
-        if climate_delta != 0:
-            original_climate = climate_score
-            climate_score = max(0, min(100, climate_score + climate_delta))
-            print(f"EVENT: Climate changed by {climate_delta} from {original_climate} to {climate_score}")
-
-        # Identify affected characters
-        stance_delta = effects.get('stance_delta', 0)
-        target_type = effects.get('target')
-        target_role = effects.get('role_id')
-        apply_skip = effects.get('skip_round', False)
-        affected_chars_for_event = []
-
-        if target_type == 'all':
-            affected_chars_for_event = characters
-        elif target_type == 'role' and target_role:
-            affected_chars_for_event = [char for char in characters if char['role_id'] == target_role]
-        elif target_type == 'role_specific' and target_role:
-            # Find all eligible characters for the specific role
-            eligible_chars = [char for char in characters if char['role_id'] == target_role and not char.get(
-                'skipped_round')]  # Avoid affecting already skipped
-            if eligible_chars:
-                # Pick one randomly from eligible ones
-                char_to_affect = random.choice(eligible_chars)
-                affected_chars_for_event = [char_to_affect]
-
-        # Apply effects to identified characters
-        for char in affected_chars_for_event:
-            # Apply stance delta
-            if stance_delta != 0:
-                original_score = char['stance_score']
-                char['stance_score'] = max(0, min(100, original_score + stance_delta))
-                # Recalculate stance category after score change
-                char['stance'] = get_stance_category(char['stance_score'])
-                print(
-                    f"EVENT: Stance for {char['name']} ({char['role_id']}) changed by {stance_delta} -> {char['stance_score']} ({char['stance']})")
-
-            # Apply skip_round effect (only applies if target was role_specific)
-            if apply_skip and target_type == 'role_specific':
-                char['skipped_round'] = True  # Mark character as skipping this round
-                print(f"EVENT: {char['name']} ({char['role_id']}) will skip this round due to event.")
-
-    # Return potentially modified characters, climate, and the event message
-    return characters, climate_score, event_text, event_triggered_info
-
-
-# --- Helper function to derive stance category from score --- #
-def get_stance_category(score):
-    if score <= 39:
-        return "Oppose"
-    elif score >= 61:
-        return "Support"
-    else:
-        return "Neutral"
-
-
-# v0 Role Concerns (English)
-V0_ROLE_CONCERNS = {
-    'developer': "Which zone activation brings maximum early return?",
-    'urban_designer': "Which zone activation maximizes future design potential?", # Architect
-    'resident_homeowner': "Which zone activation disturbs daily life the least?", # Resident
-    'resident_social': "Which zone activation ensures affordable living?", # Social Resident (Fallback)
-    'potential_buyer': "Which zone activation maximizes property value?", # Buyer
-    'community_activist': "Which zone activation poses the greatest risk?", # Activist
-    'council_planner': "Final confirmation of 'activation legitimacy'." # Councillor
-}
-
-@app.route('/api/v0/roles')
-def get_v0_roles():
-    return jsonify(V0_ROLE_CONCERNS)
-
-@app.route('/')
-def home():
-    return render_template('landing.html')
-
-
-@app.route('/chapter_selection')
-def chapter_selection():
-    return render_template('chapter_selection.html')
-
-
-@app.route('/chapter/1')
-def chapter_introduction():
-    return render_template('chapter_introduction.html')
-
-
-@app.route('/role_selection', methods=['GET', 'POST'])
-def role_selection():
-    if request.method == 'POST':
-        player_role_id = request.form.get('role')
-        if player_role_id in ONBOARDING_DATA: # Check against new data source
-            session['player_role_id'] = player_role_id
-            # Redirect to onboarding page
-            return redirect(url_for('onboarding'))
-        else:
-            # Handle error: invalid role selected
-            return redirect(url_for('role_selection'))
-
-    # Clear any previous session data when returning to role selection
-    session.pop('player_role_id', None)
-    session.pop('player_profile', None)
-    return render_template('role_selection.html', roles=ROLES)
-
-# Character Customization Route (Legacy - Redirecting to new flow if hit directly)
-@app.route('/customize', methods=['GET', 'POST'])
-def character_customization():
-    return redirect(url_for('customization'))
-
-
-@app.route('/test_custom')
-def test_custom():
-    """Debug route to test customization template directly"""
-    dummy_role = {
-        "theme": "light",
-        "role_name": "Test Councilor",
-        "portrait": "councilor_portrait.png",
-        "description": "Debug description.",
-        "tokens": 99
-    }
-    return render_template('customization.html', role=dummy_role)
-
-# Negotiation Group Display Route (Kept for potential review, but flow goes to /negotiation)
-@app.route('/negotiation_group')
-def negotiation_group():
-    # This page is now less relevant in the main flow but can be kept for debugging
-    # or showing the initial group before the first round starts.
-    characters = session.get('characters')
-    if not characters:
-        return redirect(url_for('role_selection'))  # Need characters setup first
-
-    return render_template('negotiation_group.html', characters=characters)
-
-
-# --- Negotiation Stage --- #
-
-@app.route('/home')
-def home_gaming():
-    if 'player_profile' not in session:
-         return redirect(url_for('role_selection'))
-    
-    player = session['player_profile']
-    negotiation_state = session.get('negotiation_state', {})
-    current_round = negotiation_state.get('round', 1)
-    climate_score = negotiation_state.get('negotiation_climate', 50)
-    characters = session.get('characters', [])
-    
-    # Get top 3 stakeholders (excluding player)
-    # For MVP, just take the first 3 AI characters
-    ai_chars = [c for c in characters if not c.get('is_player')]
-    top_stakeholders = ai_chars[:3]
-
-    return render_template('home_gaming.html', 
-                           player=player,
-                           top_stakeholders=top_stakeholders,
-                           current_round=current_round,
-                           climate_score=climate_score)
-
-@app.route('/characters')
-def characters_profiles():
-    if 'player_profile' not in session:
-         return redirect(url_for('role_selection'))
-    characters = session.get('characters', [])
-    return render_template('characters_profiles.html', characters=characters)
-
-@app.route('/negotiation', methods=['GET', 'POST'])
-def negotiation():
-    # Check for multiplayer room session
-    room_id = session.get('room_id')
-    is_multiplayer = False
-    
-    if room_id and room_id in ROOMS:
-        room = ROOMS[room_id]
-        if room.get('phase') == 'inGame':
-            is_multiplayer = True
-            game_state = room['game_state']
-            negotiation_state = game_state['negotiation_state']
-            characters = game_state['characters']
-            player_id = session.get('player_id')
-            # Find my profile in the room characters
-            player_profile = next((c for c in characters if c.get('id') == player_id), None)
-            
-            if not player_profile:
-                flash("Player not found in this room.", "error")
-                return redirect(url_for('role_selection'))
-
-    # Fallback to single player session if not in a valid multiplayer game
-    if not is_multiplayer:
-        # Ensure negotiation has been initialized
-        if 'negotiation_state' not in session or 'characters' not in session or 'player_profile' not in session:
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                 return jsonify({'status': 'error', 'message': "Session expired. Please reload."}), 403
-            flash("Game session not found or incomplete. Please start a new game.", "error")
-            return redirect(url_for('role_selection'))
-
-        negotiation_state = session['negotiation_state']
-        characters = session.get('characters', [])
-        player_profile = session.get('player_profile', None)
-
-    # --- Ensure Constraint State Exists & Is Valid (Safety Check) ---
-    c_state = negotiation_state.get('constraint_state')
-    if not c_state or 'climate_pressure' not in c_state:
-        # Defaults are 35, 40, 30
-        negotiation_state['constraint_state'] = state_to_dict(ConstraintState())
-        if not is_multiplayer:
-            session.modified = True
-
-    current_round = negotiation_state['round']
-
-    # --- POST Handling (Single Player Only - Multiplayer uses API) ---
-    if request.method == 'POST' and not is_multiplayer:
-        try:
-            action = request.form.get('action')  # Check which button was pressed
-
-            if negotiation_state.get('outcome') and action != 'give_up':
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'status': 'error', 'message': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
-                flash('Game over.', 'warning')
-                return redirect(url_for('negotiation'))
-
-            if action == 'give_up':
-                negotiation_state['outcome'] = 'Player Gave Up'
-                negotiation_state['final_round'] = negotiation_state['round']  # Record when they gave up
-                flash('You have chosen to end the negotiation.', 'warning')
-                session['negotiation_state'] = negotiation_state
-                session.modified = True
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                     return jsonify({'status': 'redirect', 'url': url_for('negotiation')})
-                return redirect(url_for('negotiation'))
-
-            # If action wasn't 'give_up', assume 'submit_statement'
-            player_statement = request.form.get('player_statement', '').strip()
-            word_count = len(player_statement.split())
-
-            # --- Check Minimum Word Count --- #
-            if not player_statement:  # Handle empty submission separately if needed
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'status': 'error', 'message': "Please enter a statement."}), 400
-                flash('Please enter your statement.', 'warning')
-                return redirect(url_for('negotiation'))
-            elif word_count < MIN_STATEMENT_WORDS:
-                msg = f'Your statement must be at least {MIN_STATEMENT_WORDS} words long (currently {word_count}). Please elaborate.'
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'status': 'error', 'message': msg}), 400
-                flash(msg, 'error')
-                return redirect(url_for('negotiation'))
-
-            # --- Token Cost for Statement --- #
-            player_tokens = player_profile.get('influence_tokens', 0)
-            if player_tokens < 1:
-                msg = 'Not enough Influence Tokens to make a statement.'
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'status': 'error', 'message': msg}), 400
-                flash(msg, 'error')
-                return redirect(url_for('negotiation'))
-            else:
-                # Deduct token cost
-                player_profile['influence_tokens'] -= 1
-                # Also update the player character in the main list
-                for char in characters:
-                    if char.get('is_player'):
-                        char['influence_tokens'] = player_profile['influence_tokens']
-                        break
-                print(f"Player statement cost: 1 token. Remaining: {player_profile['influence_tokens']}")
-
-            # --- Proceed with round logic only if submitting and word count is met ---
-            player_id = session['player_profile']['id']
-
-            # --- Store previous stance *category* before potential updates --- #
-            # Note: We store the *category* derived from the score at the start of the round
-            for char in characters:
-                if not char.get('is_player'):  # Only for AI characters
-                    # Store category based on score *before* AI response potentially changes it
-                    char['previous_stance_category'] = get_stance_category(char.get('stance_score', 50))
-
-            if player_statement:
-                round_dialogue = {player_id: player_statement}  # Start round with player
-                zid = infer_active_zone_id(player_statement, negotiation_state.get('active_zone_id') or 'GLOBAL')
-                negotiation_state['active_zone_id'] = zid
-                negotiation_state['active_issue_tag'] = compute_issue_tag(zid)
-                round_meta = {
-                    player_id: {
-                        'zone_id': zid,
-                        'issue_tag': negotiation_state.get('active_issue_tag'),
-                        'role_id': (player_profile or {}).get('role_id'),
-                    }
-                }
-
-                # --- Clear Previous Skip Flags & Trigger/Apply Event --- #
-                for char in characters:
-                    char.pop('skipped_round', None)  # Remove flag from previous round if set
-
-                climate_score = negotiation_state.get('negotiation_climate', 50)
-                # Get current round *before* potential event happens
-                current_round = negotiation_state['round']
-                characters, climate_score, event_text, _ = trigger_and_apply_event(characters, climate_score, current_round)
-                negotiation_state['negotiation_climate'] = climate_score  # Update climate in state
-                if event_text:
-                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                         pass # handled in json return
-                    else:
-                        flash(event_text, 'info')  # Display event message to player
-
-                ai_responses_data = get_ai_responses(
-                    characters,
-                    negotiation_state.get('history', []),
-                    player_statement,
-                    climate_score,
-                    negotiation_state.get('issues', {}),
-                    active_zone_id=zid,
-                    current_round=current_round,
-                )
-                for ai_id, data in (ai_responses_data or {}).items():
-                    round_dialogue[ai_id] = data.get('response')
-                    ai_char = next((c for c in characters if c.get('id') == ai_id), {})
-                    round_meta[ai_id] = {
-                        'zone_id': zid,
-                        'issue_tag': negotiation_state.get('active_issue_tag'),
-                        'role_id': (ai_char or {}).get('role_id'),
-                    }
-
-                for char in characters:
-                    if not char.get('is_player') and char['id'] in ai_responses_data:
-                        char['stance_score'] = ai_responses_data[char['id']]['new_score']
-
-                total_score_change = sum(data.get('score_change', 0) for data in ai_responses_data.values())
-                ai_count = len(ai_responses_data)
-                if ai_count > 0:
-                    average_change = total_score_change / ai_count
-                    climate_change = round(average_change * 2)
-                    negotiation_state['negotiation_climate'] = max(0, min(100, climate_score + climate_change))
-
-                negotiation_state.setdefault('history', []).append(round_dialogue)
-                negotiation_state.setdefault('history_meta', []).append(round_meta)
-                negotiation_state['round'] = current_round + 1
-
-                # --- Constraint Layer Integration ---
-                # 1. Capture Old State (for deltas)
-                old_issues = negotiation_state.get('issues', {}).copy()
-                old_aff = old_issues.get('affordable_housing', {}).get('share_percentage', 35)
-                # old_venue = old_issues.get('cultural_venue', {}).get('scale', 'medium') 
-
-                # 2. Update Issues (Existing Logic)
-                negotiation_state['issues'] = update_issues_based_on_stances(characters, negotiation_state.get('issues', {}))
-                
-                # 3. Calculate Deltas for Constraint Layer
-                new_issues = negotiation_state['issues']
-                new_aff = new_issues.get('affordable_housing', {}).get('share_percentage', 35)
-                delta_aff = new_aff - old_aff
-                
-                # Venue scale
-                venue_scale = new_issues.get('cultural_venue', {}).get('scale', 'medium')
-                
-                # Spatial deltas - currently placeholders or derived from other factors
-                # For now, we assume density correlates slightly with affordable housing increases or specific events
-                delta_density = 0
-                if delta_aff > 0: 
-                    delta_density = 0.05 * delta_aff # increasing affordable housing might imply slight density increase
-
-                delta_public_space = 0
-                delta_green_space = 0
-                
-                # Construct Actions Dict
-                # Use mitigation from form if available (add to UI later)
-                player_mitigation = request.form.get('mitigation', 'none') 
-                
-                constraint_actions = {
-                    "delta_height_pct": 0,          # Placeholder until spatial edit connected
-                    "delta_density": delta_density,
-                    "delta_public_space_pct": delta_public_space,
-                    "delta_green_space_pct": delta_green_space,
-                    "delta_affordable_pct": delta_aff,
-                    "venue_scale": venue_scale,
-                    "mitigation": player_mitigation 
-                }
-
-                # 4. Load & Step Constraint Layer
-                # Initialize constraint state if missing
-                if 'constraint_state' not in negotiation_state:
-                     # Create default state and convert to dict for storage
-                     negotiation_state['constraint_state'] = state_to_dict(ConstraintState())
-                
-                c_state_dict = negotiation_state['constraint_state']
-                c_state = state_from_dict(c_state_dict)
-                
-                # Call step
-                c_result = constraint_layer.step(c_state, constraint_actions, current_round)
-                
-                # 5. Persist Results
-                negotiation_state['constraint_state'] = state_to_dict(c_result.state)
-                negotiation_state['constraint_last'] = {
-                    "notices": c_result.notices,
-                    "penalties": c_result.penalties,
-                    "locks": c_result.locks,
-                    "triggered_events": c_result.triggered_events,
-                    "executed_events": c_result.executed_events,
-                }
-                
-                # 6. Apply Penalties to Game State
-                # Token Regen Penalty
-                if "token_regen_delta" in c_result.penalties:
-                     # We store this in session to apply during regenerate_tokens_for_round
-                     session['token_regen_delta'] = c_result.penalties["token_regen_delta"]
-
-                # Council Support (Direct Stance Impact)
-                if "council_support_delta" in c_result.penalties:
-                    delta = c_result.penalties["council_support_delta"]
-                    # Find council planner and adjust stance
-                    for char in characters:
-                        if char['role_id'] == 'council_planner':
-                             char['stance_score'] = max(0, min(100, char['stance_score'] + delta))
-                             print(f"Constraint Penalty: Council stance adjusted by {delta}")
-
-                if negotiation_state['round'] > MAX_ROUNDS:
-                    negotiation_state['outcome'] = check_victory(characters, negotiation_state['negotiation_climate'],
-                                                                 negotiation_state.get('issues', {}), negotiation_state.get('history', []))
-
-                negotiation_state['issues'] = update_issues_based_on_stances(characters, negotiation_state.get('issues', {}))
-                try:
-                    requests.post("http://127.0.0.1:5006/apply-issue-update", json=negotiation_state['issues'], timeout=1)
-                except Exception as e:
-                    print(f"Could not send issue update to visualization: {e}")
-
-                # --- SocketIO Emission for Constraint Layer ---
-                try:
-                    socketio.emit("constraint_update", negotiation_state['constraint_last'])
-                    socketio.emit("constraint_meters", negotiation_state['constraint_state'])
-                except Exception as e:
-                    print(f"Error emitting constraint socket events: {e}")
-
-                session['negotiation_state'] = negotiation_state
-                session['characters'] = characters
-                session['player_profile'] = player_profile
-                session.modified = True
-                
-                # --- Return JSON if AJAX request ---
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({
-                        'status': 'success',
-                        'new_round': negotiation_state['round'],
-                        'climate_score': negotiation_state['negotiation_climate'],
-                        'history': format_history_as_messages(negotiation_state.get('history', []), current_user_id=player_id),
-                        'player_tokens': player_profile.get('influence_tokens', 0),
-                        'event_text': event_text,
-                        'constraintState': negotiation_state.get('constraint_state', {}),
-                        'constraintLast': negotiation_state.get('constraint_last', {})
-                    })
-
-            return redirect(url_for('negotiation'))
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"ERROR in negotiation route: {e}")
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({'status': 'error', 'message': f"Server Error: {str(e)}"}), 500
-            flash(f"An error occurred: {e}", "error")
-            return redirect(url_for('negotiation'))
-
-
-    # --- GET Request ---
-    if not is_multiplayer:
-        regenerate_tokens_for_round(session)
-
-    characters_for_template = []
-    # Previous stance logic (Single player only for now)
-    previous_stances = session.get('previous_stance', {}) if not is_multiplayer else {}
-    for char in characters:
-        char_copy = char.copy()
-        char_copy['previous_stance'] = previous_stances.get(char['id'])
-        characters_for_template.append(char_copy)
-
-    if not is_multiplayer:
-        session.pop('previous_stance', None)
-    
-    # Prepare state with formatted history for initial load
-    state_for_template = negotiation_state.copy()
-    if 'history' in state_for_template:
-        current_viewer_id = player_profile.get('id') if player_profile else None
-        state_for_template['history'] = format_history_as_messages(
-            state_for_template['history'],
-            current_user_id=current_viewer_id,
-            meta_history=state_for_template.get('history_meta', []) or [],
-            characters=characters_for_template,
-        )
-
-    # Room ID for template if multiplayer
-    current_room_id = room_id if is_multiplayer else None
-
-    # Multiplayer round controller initial state
-    is_host = False
-    turn_order = []
-    turn_index = 0
-    current_speaker = None
-    if is_multiplayer:
-        is_host = (room.get('hostId') == player_id) or _is_host_request()
-        turn_order = game_state.get('turn_order', [])
-        turn_index = game_state.get('turn_index', 0)
-        current_speaker = game_state.get('current_speaker')
-
-    active_zone_id = (negotiation_state.get('active_zone_id') or 'GLOBAL').upper()
-    active_zone_facts = (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {})
-
-    # Switch to negotiation_mvp.html for v0 release
-    return render_template('negotiation_mvp.html',
-                           state=state_for_template,
-                           characters=characters_for_template,
-                           player_profile=player_profile,
-                           climate_score=negotiation_state.get('negotiation_climate', 50),
-                           max_rounds=MAX_ROUNDS)
-
-@app.route('/negotiation_mvp_demo')
-def negotiation_mvp_demo():
-    """Demo route with pre-populated data to test the MVP interface."""
-    # Create demo data
-    from random import choice
-    
-    demo_characters = []
-    for i, (role_id, role_data) in enumerate(ROLES.items()):
-        char = {
-            'id': f'ai_{i}',
-            'role_id': role_id,
-            'role_name': role_data['name'],
-            'name': choice(SAMPLE_NAMES),
-            'backstory': role_data.get('description', ''),
-            'initial_stance': choice(['Support', 'Neutral', 'Oppose']),
-            'stance': choice(['Support', 'Neutral', 'Oppose']),
-            'stance_score': choice([30, 50, 70]),
-            'influence': INFLUENCE_SCORES.get(role_id, 2),
-            'influence_tokens': role_data.get('initial_influence_tokens', 5),
-            'max_tokens': 10,
-            'trust_value': 50,
-            'age': choice([28, 35, 45, 53, 58]),
-            'gender': choice(['Male', 'Female']),
-            'local_resident': choice(['Yes', 'No']),
-            'has_children': choice(['Yes', 'No']),
-            'num_children': choice([0, 1, 2, 3, 4]),
-            'marital_status': choice(['Single', 'Married', 'Divorced']),
-            'previous_stance_category': 'Neutral',
-            'is_player': False
-        }
-        demo_characters.append(char)
-    
-    demo_player = {
-        'id': 'player_0',
-        'role_id': 'developer',
-        'role_name': 'Developer',
-        'name': 'You',
-        'is_player': True,
-        'influence_tokens': 8,
-        'max_tokens': 12,
-        'stance_score': 75
-    }
-    
-    demo_state = {
-        'round': 1,
-        'history': [],
-        'negotiation_climate': 50,
-        'outcome': None
-    }
-    
-    return render_template('negotiation_mvp.html',
-                           state=demo_state,
-                           characters=demo_characters,
-                           player_profile=demo_player,
-                           climate_score=50,
-                           max_rounds=MAX_ROUNDS)
-
-@app.route('/negotiation_mvp', methods=['GET', 'POST'])
-def negotiation_mvp():
-    """New MVP interface for negotiation with integrated 3D visualization."""
-    # Ensure negotiation has been initialized
-    if 'negotiation_state' not in session or 'characters' not in session or 'player_profile' not in session:
-        flash("Game session not found or incomplete. Please start a new game.", "error")
-        return redirect(url_for('role_selection'))
-
-    negotiation_state = session['negotiation_state']
-    characters = session.get('characters', [])
-    player_profile = session.get('player_profile', None)
-    
-    # Regenerate tokens for GET requests
-    if request.method == 'GET':
-        regenerate_tokens_for_round(session)
-    
-    # Process POST (same logic as regular negotiation)
-    if request.method == 'POST':
-        # Reuse the existing negotiation logic
-        return negotiation()
-    
-    return render_template('negotiation_mvp.html',
-                           state=session.get('negotiation_state', {}),
-                           characters=characters,
-                           player_profile=player_profile,
-                           climate_score=negotiation_state.get('negotiation_climate', 50),
-                           max_rounds=MAX_ROUNDS)
-
-@app.route('/api/negotiation/state')
-def get_negotiation_state():
-    """API endpoint to get current negotiation state as JSON."""
-    # Multiplayer in-room state
-    room_id = session.get('room_id')
-    if room_id and room_id in ROOMS:
-        room = ROOMS[room_id]
-        if room.get('phase') == 'inGame':
-            _enforce_turn_timeout(room_id, room)
-            game_state = room.get('game_state') or {}
-            negotiation_state = game_state.get('negotiation_state') or {}
-
-            players = room.get('players', []) or []
-            total_humans = sum(1 for p in players if p.get('id'))
-            ready_by = room.get('readyBy') or []
-            ready_count = 0
-            try:
-                ready_count = len(set([str(x) for x in ready_by if x]))
-            except Exception:
-                ready_count = 0
-            public_phase = 'inGame'
-            if total_humans > 0 and ready_count < total_humans:
-                public_phase = 'ready'
-
-            try:
-                if int(negotiation_state.get('round', 1) or 1) > MAX_ROUNDS:
-                    _finalize_multiplayer_game_if_needed(game_state)
-                    negotiation_state = game_state.get('negotiation_state') or {}
-                    room['game_state'] = game_state
-            except Exception:
-                pass
-            characters = game_state.get('characters') or []
-
-            player_id = session.get('player_id')
-            player_profile = next((c for c in characters if c.get('id') == player_id), {})
-
-            is_host = (room.get('hostId') == player_id) or _is_host_request()
-
-            history = negotiation_state.get('history', []) or []
-            history_meta = negotiation_state.get('history_meta', []) or []
-            current_round_dialogue = negotiation_state.get('current_round_dialogue') or {}
-            current_round_meta = negotiation_state.get('current_round_meta') or {}
-            combined_history = history
-            combined_meta = history_meta
-            if current_round_dialogue:
-                combined_history = history + [current_round_dialogue]
-                combined_meta = history_meta + [current_round_meta]
-
-            active_zone_id = negotiation_state.get('active_zone_id') or 'GLOBAL'
-            active_issue_tag = negotiation_state.get('active_issue_tag') or compute_issue_tag(active_zone_id)
-
-            player_role_id = (player_profile or {}).get('role_id')
-            action_history = (negotiation_state.get('player_action_history') or {}).get(player_id, [])
-            influence_costs = {
-                'gentle_persuasion': _compute_influence_cost('gentle_persuasion', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('gentle_persuasion'),
-                'pressure_opponent': _compute_influence_cost('pressure_opponent', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('pressure_opponent'),
-            }
-
-            return jsonify({
-                'currentRound': negotiation_state.get('round', 1),
-                'stakeholders': characters,
-                'playerProfile': player_profile,
-                'playerTokens': (player_profile or {}).get('influence_tokens', 0),
-                'influenceCosts': influence_costs,
-                'climateScore': negotiation_state.get('negotiation_climate', 50),
-                'messages': format_history_as_messages(
-                    combined_history,
-                    current_user_id=player_id,
-                    meta_history=combined_meta,
-                    characters=characters,
-                ),
-                'issues': negotiation_state.get('issues', {}),
-                'constraintState': negotiation_state.get('constraint_state', {}),
-                'constraintLast': negotiation_state.get('constraint_last', {}),
-                'isMultiplayer': True,
-                'roomId': room_id,
-                'myPlayerId': player_id,
-                'isHost': is_host,
-                'phase': public_phase,
-                'readyCount': ready_count,
-                'readyTotal': total_humans,
-                'iAmReady': bool(player_id and (str(player_id) in set([str(x) for x in ready_by if x]))),
-                'turnOrder': game_state.get('turn_order', []),
-                'turnIndex': game_state.get('turn_index', 0),
-                'currentSpeaker': game_state.get('current_speaker'),
-                'turnDeadlineTs': (game_state.get('turn_deadline_ts') if public_phase == 'inGame' else None),
-                'turnRemainingSec': max(0, int(math.ceil(((int(game_state.get('turn_deadline_ts') or 0)) - int(time.time() * 1000)) / 1000.0))) if game_state.get('turn_deadline_ts') else None,
-                'turnDurationSec': TURN_DURATION_SECONDS,
-                'activeZoneId': active_zone_id,
-                'activeIssueTag': active_issue_tag,
-                'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
-                'outcome': negotiation_state.get('outcome'),
-                'winnerZone': negotiation_state.get('winner_zone'),
-                'winnerCounts': negotiation_state.get('winner_counts'),
-            })
-
-    # Single player session state
-    if 'negotiation_state' not in session:
-        return jsonify({'error': 'No active negotiation'}), 404
-
-    active_zone_id = session['negotiation_state'].get('active_zone_id') or 'GLOBAL'
-    active_issue_tag = session['negotiation_state'].get('active_issue_tag') or compute_issue_tag(active_zone_id)
-    return jsonify({
-        'currentRound': session['negotiation_state'].get('round', 1),
-        'stakeholders': session.get('characters', []),
-        'playerProfile': session.get('player_profile', {}),
-        'climateScore': session['negotiation_state'].get('negotiation_climate', 50),
-        'messages': format_history_as_messages(
-            session['negotiation_state'].get('history', []),
-            current_user_id=(session.get('player_profile') or {}).get('id'),
-            meta_history=session['negotiation_state'].get('history_meta', []) or [],
-            characters=session.get('characters', []) or [],
-        ),
-        'issues': session['negotiation_state'].get('issues', {}),
-        'constraintState': session['negotiation_state'].get('constraint_state', {}),
-        'constraintLast': session['negotiation_state'].get('constraint_last', {}),
-        'activeZoneId': active_zone_id,
-        'activeIssueTag': active_issue_tag,
-        'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
-        'myPlayerId': (session.get('player_profile') or {}).get('id'), # Ensure frontend knows "me"
-        'outcome': session['negotiation_state'].get('outcome'),
-        'winnerZone': session['negotiation_state'].get('winner_zone'),
-        'winnerCounts': session['negotiation_state'].get('winner_counts'),
-    })
-
 def format_history_as_messages(history, current_user_id=None, meta_history=None, characters=None):
     """Convert dialogue history to message format for frontend."""
     messages = []
@@ -1631,17 +412,346 @@ def format_history_as_messages(history, current_user_id=None, meta_history=None,
                 is_player = char_id.startswith('player_')
 
             speaker = char_lookup.get(char_id) or {}
+            content = statement
+            if content is None or (isinstance(content, str) and content.strip() == ''):
+                content = 'No submission'
             messages.append({
                 'id': f"{round_idx}_{char_id}",
                 'sender': 'player' if is_player else 'ai',
                 'stakeholderId': char_id, # Always return ID to distinguish players
-                'content': statement,
+                'content': content,
                 'timestamp': None,
                 'zoneId': meta.get('zone_id'),
                 'issueTag': meta.get('issue_tag'),
                 'speakerRoleId': (meta.get('role_id') or speaker.get('role_id')),
             })
     return messages
+
+
+def _set_phase_deadline(game_state, duration_seconds):
+    if not game_state:
+        return
+    try:
+        duration_seconds = int(duration_seconds or 0)
+    except Exception:
+        duration_seconds = 0
+    if duration_seconds <= 0:
+        game_state['phase_deadline_ts'] = None
+        game_state['phase_duration_sec'] = None
+        return
+    game_state['phase_deadline_ts'] = int(time.time() * 1000) + int(duration_seconds * 1000)
+    game_state['phase_duration_sec'] = int(duration_seconds)
+
+
+def _round_phase_duration_seconds(round_phase, round_idx):
+    rp = str(round_phase or '').lower()
+    if rp == 'preparation':
+        return PREPARATION_DURATION_SECONDS
+    if rp == 'review':
+        return REVIEW_DURATION_SECONDS
+    if rp == 'submission':
+        return SUBMISSION_DURATION_SECONDS
+    if rp == 'transition':
+        return TRANSITION_DURATION_SECONDS
+    return SUBMISSION_DURATION_SECONDS
+
+
+def _ensure_submission_defaults(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    negotiation_state.setdefault('last_intents', {})
+    negotiation_state.setdefault('current_round_dialogue', {})
+    negotiation_state.setdefault('current_round_meta', {})
+
+    characters = game_state.get('characters') or []
+    zid = negotiation_state.get('active_zone_id') or 'A1'
+
+    for c in characters:
+        cid = c.get('id')
+        if not cid:
+            continue
+        meta = (negotiation_state.get('current_round_meta') or {}).get(cid)
+        if not isinstance(meta, dict) or not (meta.get('intent') or meta.get('zone_id')):
+            intent = (negotiation_state.get('last_intents') or {}).get(cid) or zid
+            intent = str(intent).upper() if intent else 'A1'
+            if intent not in ('A1', 'A2', 'K1'):
+                intent = 'A1'
+            negotiation_state['last_intents'][cid] = intent
+            negotiation_state['current_round_meta'][cid] = {
+                'zone_id': intent,
+                'issue_tag': compute_issue_tag(intent),
+                'role_id': (c or {}).get('role_id'),
+                'intent': intent,
+            }
+        if cid not in (negotiation_state.get('current_round_dialogue') or {}):
+            negotiation_state['current_round_dialogue'][cid] = ''
+
+    game_state['negotiation_state'] = negotiation_state
+    return
+
+
+def _auto_fill_ai_submissions(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return
+
+    def _zone_prior_for_role(role_id):
+        rid = str(role_id or '').strip()
+        priors = {
+            'developer': {'A1': 0.60, 'A2': 0.25, 'K1': 0.15},
+            'council_planner': {'A2': 0.45, 'A1': 0.30, 'K1': 0.25},
+            'resident_homeowner': {'A2': 0.50, 'A1': 0.20, 'K1': 0.30},
+            'resident_social': {'K1': 0.55, 'A2': 0.30, 'A1': 0.15},
+            'community_activist': {'K1': 0.50, 'A2': 0.30, 'A1': 0.20},
+            'urban_designer': {'A2': 0.50, 'A1': 0.30, 'K1': 0.20},
+            'potential_buyer': {'A2': 0.45, 'A1': 0.35, 'K1': 0.20},
+        }
+        return priors.get(rid) or {'A1': 0.34, 'A2': 0.33, 'K1': 0.33}
+
+    def _choose_ai_intent(ai_char, negotiation_state):
+        zones = ['A1', 'A2', 'K1']
+        role_id = (ai_char or {}).get('role_id')
+        prior = _zone_prior_for_role(role_id)
+
+        current_meta = negotiation_state.get('current_round_meta') or {}
+        counts = {'A1': 0, 'A2': 0, 'K1': 0}
+        if isinstance(current_meta, dict):
+            for _, m in current_meta.items():
+                if not isinstance(m, dict):
+                    continue
+                z = str(m.get('intent') or m.get('zone_id') or '').upper()
+                if z in counts:
+                    counts[z] += 1
+
+        last_intents = negotiation_state.get('last_intents') or {}
+        my_last = str((last_intents.get((ai_char or {}).get('id')) if isinstance(last_intents, dict) else None) or '').upper()
+
+        weights = []
+        for z in zones:
+            base = float(prior.get(z, 0.0) or 0.0)
+            diversity = 1.0 / float(1 + int(counts.get(z, 0) or 0))
+            inertia = 1.15 if (my_last == z) else 1.0
+            weights.append(max(0.0001, base * diversity * inertia))
+
+        try:
+            return random.choices(zones, weights=weights, k=1)[0]
+        except Exception:
+            return zones[int(random.random() * len(zones))]
+
+    characters = game_state.get('characters') or []
+    history = negotiation_state.get('history', []) or []
+    issues = negotiation_state.get('issues', {}) or {}
+    climate = negotiation_state.get('negotiation_climate', 50)
+    zid = negotiation_state.get('active_zone_id') or 'GLOBAL'
+    negotiation_state.setdefault('last_intents', {})
+    negotiation_state.setdefault('current_round_dialogue', {})
+    negotiation_state.setdefault('current_round_meta', {})
+
+    current_round_dialogue = negotiation_state.get('current_round_dialogue') or {}
+    prompt_history = history + [current_round_dialogue] if current_round_dialogue else history
+
+    last_text = ''
+    if current_round_dialogue:
+        try:
+            last_key = list(current_round_dialogue.keys())[-1]
+            last_text = str(current_round_dialogue.get(last_key) or '')
+        except Exception:
+            last_text = ''
+    elif history:
+        last_round = history[-1] or {}
+        try:
+            last_key = list(last_round.keys())[-1]
+            last_text = str(last_round.get(last_key) or '')
+        except Exception:
+            last_text = ''
+
+    for c in characters:
+        if c.get('is_player'):
+            continue
+        cid = c.get('id')
+        if not cid:
+            continue
+        if cid in (negotiation_state.get('current_round_meta') or {}):
+            continue
+
+        chosen_intent = _choose_ai_intent(c, negotiation_state)
+
+        responses = get_ai_responses(
+            characters,
+            prompt_history,
+            last_text,
+            climate,
+            issues,
+            only_ai_id=cid,
+            active_zone_id=chosen_intent,
+            current_round=negotiation_state.get('round', 1),
+        )
+        ai_text = (responses.get(cid) or {}).get('response')
+        if not ai_text:
+            ai_text = '...'
+
+        ai_intent = str(chosen_intent).upper() if chosen_intent else 'A1'
+        if ai_intent not in ('A1', 'A2', 'K1'):
+            ai_intent = 'A1'
+
+        negotiation_state['last_intents'][cid] = ai_intent
+        negotiation_state.setdefault('current_round_dialogue', {})
+        negotiation_state['current_round_dialogue'][cid] = ai_text
+        negotiation_state['current_round_meta'][cid] = {
+            'zone_id': ai_intent,
+            'issue_tag': compute_issue_tag(ai_intent),
+            'role_id': (c or {}).get('role_id'),
+            'intent': ai_intent,
+        }
+        last_text = ai_text
+
+    game_state['negotiation_state'] = negotiation_state
+    return
+
+
+def _finalize_submission_round(game_state):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return
+
+    _ensure_submission_defaults(game_state)
+    negotiation_state = game_state.get('negotiation_state') or {}
+
+    negotiation_state.setdefault('history', []).append(negotiation_state.get('current_round_dialogue', {}) or {})
+    negotiation_state.setdefault('history_meta', []).append(negotiation_state.get('current_round_meta', {}) or {})
+    negotiation_state['current_round_dialogue'] = {}
+    negotiation_state['current_round_meta'] = {}
+    negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+
+    _regen_room_tokens(game_state)
+    _finalize_multiplayer_game_if_needed(game_state)
+    game_state['negotiation_state'] = negotiation_state
+    return
+
+
+def _advance_round_phase(room_id, room):
+    if not room:
+        return False
+    if room.get('phase') != 'inGame':
+        return False
+    game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        game_state['round_phase'] = 'game_over'
+        game_state['phase_deadline_ts'] = None
+        game_state['phase_duration_sec'] = None
+        room['game_state'] = game_state
+        return True
+
+    rp = str(game_state.get('round_phase') or 'preparation').lower()
+    try:
+        round_idx = int(negotiation_state.get('round', 1) or 1)
+    except Exception:
+        round_idx = 1
+
+    if rp == 'preparation':
+        next_rp = 'review' if round_idx > 1 else 'submission'
+        game_state['round_phase'] = next_rp
+        game_state['submitted_by'] = []
+        game_state['submitted_round'] = round_idx
+        if next_rp == 'submission':
+            _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds(next_rp, round_idx))
+    elif rp == 'review':
+        game_state['round_phase'] = 'submission'
+        game_state['submitted_by'] = []
+        game_state['submitted_round'] = round_idx
+        _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds('submission', round_idx))
+    elif rp == 'submission':
+        _finalize_submission_round(game_state)
+        negotiation_state = game_state.get('negotiation_state') or {}
+        if negotiation_state.get('outcome'):
+            game_state['round_phase'] = 'game_over'
+            game_state['phase_deadline_ts'] = None
+            game_state['phase_duration_sec'] = None
+        else:
+            game_state['round_phase'] = 'transition'
+            _set_phase_deadline(game_state, _round_phase_duration_seconds('transition', round_idx))
+    elif rp == 'transition':
+        negotiation_state = game_state.get('negotiation_state') or {}
+        try:
+            round_idx = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            round_idx = 1
+        next_rp = 'review' if round_idx > 1 else 'submission'
+        game_state['round_phase'] = next_rp
+        game_state['submitted_by'] = []
+        game_state['submitted_round'] = round_idx
+        if next_rp == 'submission':
+            _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds(next_rp, round_idx))
+    else:
+        game_state['round_phase'] = 'submission'
+        game_state['submitted_by'] = []
+        game_state['submitted_round'] = round_idx
+        _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds('submission', round_idx))
+
+    room['game_state'] = game_state
+    return True
+
+
+def _enforce_phase_timeout(room_id, room):
+    if not room or room.get('phase') != 'inGame':
+        return False
+
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return False
+
+    game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return False
+
+    deadline = game_state.get('phase_deadline_ts')
+    if not deadline:
+        rp = str(game_state.get('round_phase') or 'preparation').lower()
+        try:
+            round_idx = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            round_idx = 1
+        if rp == 'submission':
+            _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds(rp, round_idx))
+        room['game_state'] = game_state
+        return True
+
+    changed = False
+    while True:
+        try:
+            now_ms = int(time.time() * 1000)
+            dl = int(game_state.get('phase_deadline_ts') or 0)
+        except Exception:
+            break
+        if not dl or now_ms < dl:
+            break
+        _advance_round_phase(room_id, room)
+        game_state = room.get('game_state') or {}
+        negotiation_state = game_state.get('negotiation_state') or {}
+        changed = True
+        if negotiation_state.get('outcome'):
+            break
+
+    room['game_state'] = game_state
+    return bool(changed)
 
 @app.route('/profile/<string:char_id>')
 def view_profile(char_id):
@@ -2852,8 +1962,139 @@ def get_room_state(room_id):
     if room_id not in ROOMS:
         return jsonify({'error': 'Room not found.'}), 404
     room = ROOMS.get(room_id)
-    _enforce_turn_timeout(room_id, room)
+    _enforce_phase_timeout(room_id, room)
     return jsonify(_get_public_room_state(room_id))
+
+
+@app.route('/api/negotiation/state')
+def get_negotiation_state():
+    """Compatibility API endpoint used by negotiation_mvp.html polling."""
+    room_id = session.get('room_id')
+    if room_id and room_id in ROOMS:
+        room = ROOMS[room_id]
+        if room.get('phase') == 'inGame':
+            _enforce_phase_timeout(room_id, room)
+            game_state = room.get('game_state') or {}
+            negotiation_state = game_state.get('negotiation_state') or {}
+
+            players = room.get('players', []) or []
+            total_humans = sum(1 for p in players if p.get('id'))
+            ready_by = room.get('readyBy') or []
+            try:
+                ready_count = len(set([str(x) for x in ready_by if x]))
+            except Exception:
+                ready_count = 0
+
+            public_phase = 'inGame'
+            if total_humans > 0 and ready_count < total_humans:
+                public_phase = 'ready'
+
+            characters = game_state.get('characters') or []
+            player_id = session.get('player_id')
+            player_profile = next((c for c in characters if c.get('id') == player_id), {})
+            is_host = (room.get('hostId') == player_id) or _is_host_request()
+
+            history = negotiation_state.get('history', []) or []
+            history_meta = negotiation_state.get('history_meta', []) or []
+            current_round_dialogue = negotiation_state.get('current_round_dialogue') or {}
+            current_round_meta = negotiation_state.get('current_round_meta') or {}
+            combined_history = history
+            combined_meta = history_meta
+            if current_round_dialogue:
+                combined_history = history + [current_round_dialogue]
+                combined_meta = history_meta + [current_round_meta]
+
+            active_zone_id = negotiation_state.get('active_zone_id') or 'GLOBAL'
+            active_issue_tag = negotiation_state.get('active_issue_tag') or compute_issue_tag(active_zone_id)
+
+            player_role_id = (player_profile or {}).get('role_id')
+            action_history = (negotiation_state.get('player_action_history') or {}).get(player_id, [])
+            influence_costs = {
+                'gentle_persuasion': _compute_influence_cost('gentle_persuasion', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('gentle_persuasion'),
+                'pressure_opponent': _compute_influence_cost('pressure_opponent', player_role_id, action_history=action_history) if player_role_id else INFLUENCE_ACTION_COSTS.get('pressure_opponent'),
+            }
+
+            dl = game_state.get('phase_deadline_ts')
+            try:
+                phase_remaining = max(0, int(math.ceil(((int(dl or 0)) - int(time.time() * 1000)) / 1000.0))) if dl else None
+            except Exception:
+                phase_remaining = None
+
+            submitted_by = game_state.get('submitted_by') or []
+            has_submitted = bool(player_id and (player_id in submitted_by))
+
+            return jsonify({
+                'currentRound': negotiation_state.get('round', 1),
+                'stakeholders': characters,
+                'playerProfile': player_profile,
+                'playerTokens': (player_profile or {}).get('influence_tokens', 0),
+                'influenceCosts': influence_costs,
+                'climateScore': negotiation_state.get('negotiation_climate', 50),
+                'messages': format_history_as_messages(
+                    combined_history,
+                    current_user_id=player_id,
+                    meta_history=combined_meta,
+                    characters=characters,
+                ),
+                'issues': negotiation_state.get('issues', {}),
+                'constraintState': negotiation_state.get('constraint_state', {}),
+                'constraintLast': negotiation_state.get('constraint_last', {}),
+                'isMultiplayer': True,
+                'roomId': room_id,
+                'myPlayerId': player_id,
+                'isHost': is_host,
+                'phase': public_phase,
+                'readyCount': ready_count,
+                'readyTotal': total_humans,
+                'iAmReady': bool(player_id and (str(player_id) in set([str(x) for x in ready_by if x]))),
+                'turnOrder': game_state.get('turn_order', []),
+                'turnIndex': game_state.get('turn_index', 0),
+                'currentSpeaker': game_state.get('current_speaker'),
+                'turnDeadlineTs': None,
+                'turnRemainingSec': None,
+                'turnDurationSec': None,
+                'roundPhase': game_state.get('round_phase'),
+                'phaseDeadlineTs': (dl if public_phase == 'inGame' else None),
+                'phaseRemainingSec': (phase_remaining if public_phase == 'inGame' else None),
+                'phaseDurationSec': (game_state.get('phase_duration_sec') if public_phase == 'inGame' else None),
+                'hasSubmitted': has_submitted,
+                'activeZoneId': active_zone_id,
+                'activeIssueTag': active_issue_tag,
+                'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
+                'outcome': negotiation_state.get('outcome'),
+                'winnerZone': negotiation_state.get('winner_zone'),
+                'winnerCounts': negotiation_state.get('winner_counts'),
+                'lastIntents': negotiation_state.get('last_intents', {}) or {},
+            })
+
+    if 'negotiation_state' not in session:
+        return jsonify({'error': 'No active negotiation'}), 404
+
+    active_zone_id = session['negotiation_state'].get('active_zone_id') or 'GLOBAL'
+    active_issue_tag = session['negotiation_state'].get('active_issue_tag') or compute_issue_tag(active_zone_id)
+    return jsonify({
+        'currentRound': session['negotiation_state'].get('round', 1),
+        'stakeholders': session.get('characters', []),
+        'playerProfile': session.get('player_profile', {}),
+        'climateScore': session['negotiation_state'].get('negotiation_climate', 50),
+        'messages': format_history_as_messages(
+            session['negotiation_state'].get('history', []),
+            current_user_id=(session.get('player_profile') or {}).get('id'),
+            meta_history=session['negotiation_state'].get('history_meta', []) or [],
+            characters=session.get('characters', []) or [],
+        ),
+        'issues': session['negotiation_state'].get('issues', {}),
+        'constraintState': session['negotiation_state'].get('constraint_state', {}),
+        'constraintLast': session['negotiation_state'].get('constraint_last', {}),
+        'activeZoneId': active_zone_id,
+        'activeIssueTag': active_issue_tag,
+        'activeZoneFacts': (ZONE_FACT_ZONES.get(active_zone_id) or ZONE_FACT_ZONES.get('GLOBAL') or {}),
+        'myPlayerId': (session.get('player_profile') or {}).get('id'),
+        'outcome': session['negotiation_state'].get('outcome'),
+        'winnerZone': session['negotiation_state'].get('winner_zone'),
+        'winnerCounts': session['negotiation_state'].get('winner_counts'),
+        'lastIntents': session['negotiation_state'].get('last_intents', {}) or {},
+    })
 
 
 @app.route('/api/rooms/<room_id>/select_role', methods=['POST'])
@@ -3055,10 +2296,14 @@ def _build_room_game_state(room):
         'turn_order_base': turn_order_base,
         'turn_order_round1': turn_order_round1,
         'turn_index': 0,
-        'current_speaker': turn_order[0] if turn_order else None,
+        'current_speaker': None,
         'turn_deadline_ts': None,
+        'round_phase': 'preparation',
+        'phase_deadline_ts': None,
+        'phase_duration_sec': None,
+        'submitted_by': [],
+        'submitted_round': 1,
     }
-    _set_turn_deadline(game_state)
     return game_state
 
 
@@ -3125,6 +2370,8 @@ def _set_turn_deadline(game_state):
 
 
 def _enforce_turn_timeout(room_id, room):
+    if room and (room.get('game_state') or {}).get('phase_deadline_ts'):
+        return False
     if not room or room.get('phase') != 'inGame':
         return False
 
@@ -3330,6 +2577,11 @@ def start_room(room_id):
             room['game_state']['turn_deadline_ts'] = None
     except Exception:
         pass
+    try:
+        if room.get('game_state') and room['game_state'].get('phase_deadline_ts'):
+            room['game_state']['phase_deadline_ts'] = None
+    except Exception:
+        pass
 
     # M2: Log Event
     log_event(room_id, player_id, 'GAME_STARTED', payload={'config': room.get('config')})
@@ -3370,11 +2622,19 @@ def mark_player_ready(room_id):
     except Exception:
         ready_count = 0
 
-    # Start turn timer when all humans are ready
+    # Start phase timer when all humans are ready
     game_state = room.get('game_state') or {}
     if total_humans > 0 and ready_count >= total_humans and game_state:
-        if not game_state.get('turn_deadline_ts'):
-            _set_turn_deadline(game_state)
+        if not game_state.get('phase_deadline_ts'):
+            rp = str(game_state.get('round_phase') or 'preparation').lower()
+            negotiation_state = game_state.get('negotiation_state') or {}
+            try:
+                round_idx = int(negotiation_state.get('round', 1) or 1)
+            except Exception:
+                round_idx = 1
+            if rp == 'submission':
+                _auto_fill_ai_submissions(game_state)
+            _set_phase_deadline(game_state, _round_phase_duration_seconds(rp, round_idx))
             room['game_state'] = game_state
 
     try:
@@ -3461,7 +2721,7 @@ def handle_scene_update(data):
 
 @app.route('/api/rooms/<room_id>/send', methods=['POST'])
 def send_message(room_id):
-    """Send a message in the negotiation. Only current speaker can send."""
+    """Submit a speech + vote during the submission phase."""
     room_id = (room_id or '').upper()
     room = ROOMS.get(room_id)
     if not room:
@@ -3481,7 +2741,7 @@ def send_message(room_id):
     if total_humans > 0 and ready_count < total_humans:
         return jsonify({'error': 'Waiting for all players to start.', 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 400
 
-    _enforce_turn_timeout(room_id, room)
+    _enforce_phase_timeout(room_id, room)
 
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')
@@ -3492,15 +2752,16 @@ def send_message(room_id):
     if not player_id:
         return jsonify({'error': 'Player ID required.'}), 400
 
+    game_state = room.get('game_state', {})
+    if str(game_state.get('round_phase') or '').lower() != 'submission':
+        return jsonify({'error': 'Not in submission phase.', 'roundPhase': game_state.get('round_phase')}), 400
+
     if not text:
         return jsonify({'error': 'Message text required.'}), 400
 
-    game_state = room.get('game_state', {})
-    current_speaker = game_state.get('current_speaker')
-
-    # Enforce turn order: only current speaker can send
-    if player_id != current_speaker:
-        return jsonify({'error': 'Not your turn.', 'currentSpeaker': current_speaker}), 403
+    submitted_by = list(game_state.get('submitted_by') or [])
+    if player_id in submitted_by:
+        return jsonify({'error': 'Already submitted.', 'hasSubmitted': True}), 400
 
     characters = game_state.get('characters') or []
     me = next((c for c in characters if c.get('id') == player_id), {})
@@ -3572,18 +2833,26 @@ def send_message(room_id):
         turn_idx=game_state.get('turn_index')
     )
 
-    _advance_turn_state(game_state)
+    submitted_by.append(player_id)
+    game_state['submitted_by'] = submitted_by
+    try:
+        game_state['submitted_round'] = int(negotiation_state.get('round', 1) or 1)
+    except Exception:
+        game_state['submitted_round'] = negotiation_state.get('round', 1)
 
-    # Auto-play AI turns until next human (or safety limit)
-    _auto_play_ai_chain(room_id, room)
+    characters = game_state.get('characters') or []
+    human_ids = [c.get('id') for c in characters if c.get('is_player') and c.get('id')]
+    all_humans_submitted = all((hid in submitted_by) for hid in human_ids) if human_ids else True
+
+    if all_humans_submitted:
+        _advance_round_phase(room_id, room)
 
     # Broadcast update to all clients in the room
     socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
 
     return jsonify({
         'ok': True,
-        'turnIndex': game_state.get('turn_index', 0),
-        'currentSpeaker': game_state.get('current_speaker'),
+        'roundPhase': (room.get('game_state') or {}).get('round_phase'),
         'roundIndex': negotiation_state.get('round', 1),
         'outcome': negotiation_state.get('outcome'),
         'winnerZone': negotiation_state.get('winner_zone'),
@@ -3593,7 +2862,7 @@ def send_message(room_id):
 
 @app.route('/api/rooms/<room_id>/advance_turn', methods=['POST'])
 def advance_turn(room_id):
-    """Host-only: force advance to next speaker without sending a message."""
+    """Host-only: force advance the phase engine (debug)."""
     room_id = (room_id or '').upper()
     room = ROOMS.get(room_id)
     if not room:
@@ -3628,16 +2897,14 @@ def advance_turn(room_id):
         return jsonify({'error': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
 
     # M2: Log Event
-    log_event(room_id, player_id, 'TURN_FORCED_ADVANCE', round_idx=negotiation_state.get('round'), turn_idx=game_state.get('turn_index'))
+    log_event(room_id, player_id, 'PHASE_FORCED_ADVANCE', round_idx=negotiation_state.get('round'), turn_idx=game_state.get('turn_index'))
 
-    _advance_turn_state(game_state)
-    _auto_play_ai_chain(room_id, room)
+    _advance_round_phase(room_id, room)
 
     socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
     return jsonify({
         'ok': True,
-        'turnIndex': game_state.get('turn_index', 0),
-        'currentSpeaker': game_state.get('current_speaker'),
+        'roundPhase': (room.get('game_state') or {}).get('round_phase'),
         'roundIndex': negotiation_state.get('round', 1),
         'outcome': negotiation_state.get('outcome'),
         'winnerZone': negotiation_state.get('winner_zone'),
@@ -3647,7 +2914,7 @@ def advance_turn(room_id):
 
 @app.route('/api/rooms/<room_id>/timeout_turn', methods=['POST'])
 def timeout_turn(room_id):
-    """Client-triggered timeout check: if the current turn deadline has passed, auto-pass to next speaker."""
+    """Client-triggered timeout check: advance phase if deadline has passed."""
     room_id = (room_id or '').upper()
     room = ROOMS.get(room_id)
     if not room:
@@ -3667,48 +2934,22 @@ def timeout_turn(room_id):
     if total_humans > 0 and ready_count < total_humans:
         return jsonify({'timedOut': False, 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 200
 
+    changed = _enforce_phase_timeout(room_id, room)
     game_state = room.get('game_state') or {}
     negotiation_state = game_state.get('negotiation_state') or {}
-    if negotiation_state.get('outcome'):
-        return jsonify({
-            'ok': True,
-            'timedOut': False,
-            'turnIndex': game_state.get('turn_index', 0),
-            'currentSpeaker': game_state.get('current_speaker'),
-            'turnDeadlineTs': game_state.get('turn_deadline_ts'),
-            'turnRemainingSec': None,
-            'turnDurationSec': TURN_DURATION_SECONDS,
-            'outcome': negotiation_state.get('outcome'),
-            'winnerZone': negotiation_state.get('winner_zone'),
-            'winnerCounts': negotiation_state.get('winner_counts'),
-        })
-    deadline = game_state.get('turn_deadline_ts')
-    timed_out = False
-    if deadline:
-        try:
-            timed_out = int(time.time() * 1000) >= int(deadline)
-        except Exception:
-            timed_out = False
-
-    if timed_out:
-        _enforce_turn_timeout(room_id, room)
-
-    game_state = room.get('game_state') or {}
-    negotiation_state = game_state.get('negotiation_state') or {}
+    dl = game_state.get('phase_deadline_ts')
     try:
-        dl = int(game_state.get('turn_deadline_ts') or 0)
-        remaining = max(0, int(math.ceil((dl - int(time.time() * 1000)) / 1000.0))) if dl else None
+        remaining = max(0, int(math.ceil(((int(dl or 0)) - int(time.time() * 1000)) / 1000.0))) if dl else None
     except Exception:
         remaining = None
 
     return jsonify({
         'ok': True,
-        'timedOut': bool(timed_out),
-        'turnIndex': game_state.get('turn_index', 0),
-        'currentSpeaker': game_state.get('current_speaker'),
-        'turnDeadlineTs': game_state.get('turn_deadline_ts'),
-        'turnRemainingSec': remaining,
-        'turnDurationSec': TURN_DURATION_SECONDS,
+        'timedOut': bool(changed),
+        'roundPhase': game_state.get('round_phase'),
+        'phaseDeadlineTs': dl,
+        'phaseRemainingSec': remaining,
+        'phaseDurationSec': game_state.get('phase_duration_sec'),
         'outcome': negotiation_state.get('outcome'),
         'winnerZone': negotiation_state.get('winner_zone'),
         'winnerCounts': negotiation_state.get('winner_counts'),
@@ -3751,42 +2992,35 @@ def end_round(room_id):
     # M2: Log Event
     log_event(room_id, player_id, 'ROUND_FORCED_END', round_idx=negotiation_state.get('round'))
 
-    # Commit current round dialogue to history and move to next round
-    negotiation_state.setdefault('history', []).append(negotiation_state.get('current_round_dialogue', {}) or {})
-    negotiation_state.setdefault('history_meta', []).append(negotiation_state.get('current_round_meta', {}) or {})
-    negotiation_state['current_round_dialogue'] = {}
-    negotiation_state['current_round_meta'] = {}
-    negotiation_state['round'] = int(negotiation_state.get('round', 1) or 1) + 1
+    if negotiation_state.get('outcome'):
+        return jsonify({'ok': True, 'outcome': negotiation_state.get('outcome')})
 
-    _regen_room_tokens(game_state)
+    _ensure_submission_defaults(game_state)
+    _finalize_submission_round(game_state)
+    negotiation_state = (game_state.get('negotiation_state') or {})
 
-    # After Round 1 ends, switch to base order (host is no longer forced first)
-    if int(negotiation_state.get('round', 1)) == 2:
-        base = game_state.get('turn_order_base')
-        if base:
-            game_state['turn_order'] = list(base)
-
-    turn_order = game_state.get('turn_order', []) or []
-    game_state['turn_index'] = 0
-    _finalize_multiplayer_game_if_needed(game_state)
-    if (game_state.get('negotiation_state') or {}).get('outcome'):
-        game_state['current_speaker'] = None
-        game_state['turn_deadline_ts'] = None
+    if negotiation_state.get('outcome'):
+        game_state['round_phase'] = 'game_over'
+        game_state['phase_deadline_ts'] = None
+        game_state['phase_duration_sec'] = None
     else:
-        game_state['current_speaker'] = turn_order[0] if turn_order else None
-        _set_turn_deadline(game_state)
+        game_state['round_phase'] = 'transition'
+        game_state['submitted_by'] = []
+        try:
+            game_state['submitted_round'] = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            game_state['submitted_round'] = negotiation_state.get('round', 1)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds('transition', negotiation_state.get('round', 1)))
 
-    _auto_play_ai_chain(room_id, room)
-
+    room['game_state'] = game_state
     socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
     return jsonify({
         'ok': True,
-        'turnIndex': game_state.get('turn_index', 0),
-        'currentSpeaker': game_state.get('current_speaker'),
-        'roundIndex': (game_state.get('negotiation_state') or {}).get('round', 1),
-        'outcome': (game_state.get('negotiation_state') or {}).get('outcome'),
-        'winnerZone': (game_state.get('negotiation_state') or {}).get('winner_zone'),
-        'winnerCounts': (game_state.get('negotiation_state') or {}).get('winner_counts'),
+        'roundPhase': game_state.get('round_phase'),
+        'roundIndex': negotiation_state.get('round', 1),
+        'outcome': negotiation_state.get('outcome'),
+        'winnerZone': negotiation_state.get('winner_zone'),
+        'winnerCounts': negotiation_state.get('winner_counts'),
     })
 
 

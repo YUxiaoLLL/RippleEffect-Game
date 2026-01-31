@@ -1139,6 +1139,10 @@ function ensureZoneIndicators() {
 
 function calculateZoneCenters() {
     console.log("[3D] Calculating Zone Centers...");
+    try {
+        cityGroup.updateMatrixWorld(true);
+    } catch (e) {
+    }
     // Calculate centers for A1, A2, K1 based on masterplanData
     const zones = ['A1', 'A2', 'K1'];
     
@@ -1168,6 +1172,10 @@ function calculateZoneCenters() {
             
             if (mesh) {
                 try {
+                    try {
+                        mesh.updateMatrixWorld(true);
+                    } catch (e) {
+                    }
                     tmpBox.setFromObject(mesh);
                     tmpBox.getCenter(tmpCenter);
                     sumX += tmpCenter.x;
