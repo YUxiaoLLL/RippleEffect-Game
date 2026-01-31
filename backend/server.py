@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from models import SceneState, Block, Action, SceneUpdate
 from agents.persona_engine import generate_dna_persona
-from agents.persona_data import STYLES, ROLE_SPEECH_CONSTRAINTS, NUMERIC_POLICY, SPATIAL_GROUNDING_EXAMPLES # Import AI Response Engine v1.0 constants
+from agents.persona_data import STYLES, ROLE_SPEECH_CONSTRAINTS, NUMERIC_POLICY, SPATIAL_GROUNDING_EXAMPLES, STANCE_MATRIX # Import AI Response Engine v1.0 constants
 from constraint_layer import ConstraintLayer, state_from_dict, state_to_dict, ConstraintState # Import Constraint Layer
 # import ezdxf
 from werkzeug.utils import secure_filename

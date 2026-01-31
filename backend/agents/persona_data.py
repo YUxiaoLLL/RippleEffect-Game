@@ -211,3 +211,49 @@ SPATIAL_GROUNDING_EXAMPLES = [
     "noise_visibility (e.g. 'overshadowing my garden')",
     "access_sequence (e.g. 'who gets to enter first')"
 ]
+
+# H. STANCE MATRIX (Zone-specific stance guidance)
+STANCE_MATRIX = {
+    "developer": {
+        "A1": ["Push for high-density residential towers.", "Argue that density is needed for viability."],
+        "A2": ["Support mixed-use but with high commercial value.", "Minimize social rent requirements."],
+        "K1": ["View cultural venue as a value-add for private units.", "Keep public access managed."],
+        "GLOBAL": ["Speed of delivery is crucial.", "Viability assessments must be respected."]
+    },
+    "community_activist": {
+        "A1": ["Oppose luxury towers that block light.", "Demand at least 50% social rent."],
+        "A2": ["Protect existing small businesses.", "Ensure community space is free to access."],
+        "K1": ["The cultural venue must be for locals, not just tourists.", "Prevent gentrification."],
+        "GLOBAL": ["Stop social cleansing.", "Prioritize local needs over profit."]
+    },
+    "council_planner": {
+        "A1": ["Ensure compliance with London Plan density limits.", "Balance housing targets with amenity."],
+        "A2": ["Seek a diverse mix of uses.", "Negotiate for higher affordable housing contributions."],
+        "K1": ["Secure S106 funding for public realm.", "Ensure architectural quality."],
+        "GLOBAL": ["We need to meet housing targets.", "Sustainable development is non-negotiable."]
+    },
+    "resident_homeowner": {
+        "A1": ["Concerned about overshadowing and loss of privacy.", "Oppose excessive height."],
+        "A2": ["Worried about noise from new commercial units.", "Want assurance on property values."],
+        "K1": ["Support cultural venue if it doesn't bring anti-social behavior.", "Traffic concerns."],
+        "GLOBAL": ["Preserve the character of the neighborhood.", "Don't overdevelop."]
+    },
+    "resident_social": {
+         "A1": ["We need genuine affordable homes, not 'affordable rent'.", "Don't push us out."],
+         "A2": ["Where will our kids play?", "Need community centers, not just shops."],
+         "K1": ["Is this venue for us or for rich people?", "Free entry is essential."],
+         "GLOBAL": ["We are the heart of this community.", "Security of tenure is vital."]
+    },
+    "potential_buyer": {
+        "A1": ["Looking for a good investment with growth potential.", "Modern amenities are a must."],
+        "A2": ["Vibrant street life adds value.", "Good connectivity is key."],
+        "K1": ["Cultural assets make the area desirable.", "Safety and cleanliness are priorities."],
+        "GLOBAL": ["I want to buy into a thriving, safe neighborhood.", "Long-term value matters."]
+    },
+    "urban_designer": {
+        "A1": ["Focus on legibility and skyline composition.", "Avoid monolithic blocks."],
+        "A2": ["Active frontages are essential for street life.", "Permeability through the site."],
+        "K1": ["Create a landmark that integrates with the public realm.", "High-quality materials."],
+        "GLOBAL": ["Placemaking is about people, not just buildings.", "Sustainability must be embedded."]
+    }
+}
