@@ -417,6 +417,15 @@ STANCES = {
     "compromise": "Compromise"
 }
 INFLUENCE_SCORES = {}
+SAMPLE_NAMES = ["Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Jamie", "Quinn", "Avery", "Parker"]
+INITIAL_NEUTRAL_SCORE = 50
+INITIAL_SUPPORT_SCORE = 75
+INITIAL_OPPOSE_SCORE = 25
+INFLUENCE_ACTION_COSTS = {
+    'gentle_persuasion': 2,
+    'pressure_opponent': 5
+}
+INFLUENCE_ACTION_EFFECTS = {}
 NEUTRAL_SCORE = 50 # Default neutral score
 MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
