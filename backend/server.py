@@ -426,6 +426,33 @@ INFLUENCE_ACTION_COSTS = {
     'pressure_opponent': 5
 }
 INFLUENCE_ACTION_EFFECTS = {}
+
+def get_stance_category(score):
+    try:
+        s = int(score)
+    except:
+        s = 50
+    if s >= 70:
+        return STANCES['support']
+    if s <= 30:
+        return STANCES['oppose']
+    return STANCES['neutral']
+
+def _compute_influence_cost(action, role_id, action_history=None):
+    """
+    Calculate influence token cost for an action.
+    Base cost comes from INFLUENCE_ACTION_COSTS.
+    Could be modified by role traits or history (e.g. repeated actions cost more).
+    """
+    base_cost = INFLUENCE_ACTION_COSTS.get(action, 0)
+    
+    # Example Modifier: If pressure is used too often, maybe cost increases?
+    # For MVP, we stick to base cost or simple role modifier if data exists.
+    role_data = ROLES.get(role_id, {})
+    # e.g. role_data.get('influence_cost_modifiers', {}).get(action, 0)
+    
+    return base_cost
+
 NEUTRAL_SCORE = 50 # Default neutral score
 MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
