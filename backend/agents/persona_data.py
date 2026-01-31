@@ -257,14 +257,3 @@ STANCE_MATRIX = {
         "GLOBAL": ["Placemaking is about people, not just buildings.", "Sustainability must be embedded."]
     }
 }
-
-# I. ROLE VOICE KEYWORDS (For validation/guidance)
-ROLE_VOICE_KEYWORDS = {
-    "developer": ["viability", "investment", "delivery", "growth", "modern", "efficient"],
-    "community_activist": ["community", "fairness", "local", "rights", "justice", "impact"],
-    "council_planner": ["policy", "compliance", "balance", "guidelines", "targets", "sustainable"],
-    "resident_homeowner": ["property", "noise", "privacy", "character", "value", "traffic"],
-    "resident_social": ["affordable", "support", "help", "safety", "kids", "rent"],
-    "potential_buyer": ["future", "amenities", "location", "safe", "quality", "design"],
-    "urban_designer": ["public realm", "connectivity", "scale", "active frontage", "texture", "integration"]
-}

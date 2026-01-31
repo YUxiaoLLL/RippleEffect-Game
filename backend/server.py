@@ -2475,8 +2475,10 @@ def _finalize_multiplayer_game_if_needed(game_state):
     negotiation_state = game_state.get('negotiation_state', {})
     current_round = negotiation_state.get('round', 1)
     
+    print(f"DEBUG: Checking victory for Round {current_round} (MAX: {MAX_ROUNDS})")
     if current_round > MAX_ROUNDS:
         # Game Over
+        print("DEBUG: MAX_ROUNDS exceeded. Triggering victory check.")
         history = negotiation_state.get('history', [])
         issues = negotiation_state.get('issues', {})
         climate = negotiation_state.get('negotiation_climate', 50)
@@ -2485,6 +2487,7 @@ def _finalize_multiplayer_game_if_needed(game_state):
         # Use the existing check_victory function
         outcome_text = check_victory(characters, climate, issues, history)
         negotiation_state['outcome'] = outcome_text
+        print(f"DEBUG: Outcome set to: {outcome_text}")
 
 
 def _is_ai_speaker(speaker_id, characters):
@@ -3340,6 +3343,12 @@ if __name__ == '__main__':
         'debug': True,
         'host': '0.0.0.0',
         'port': 5006,
+        'allow_unsafe_werkzeug': True,
+    }
+    if ssl_cert and ssl_key:
+        run_kwargs['ssl_context'] = (ssl_cert, ssl_key)
+    socketio.run(app, **run_kwargs)
+
         'allow_unsafe_werkzeug': True,
     }
     if ssl_cert and ssl_key:
