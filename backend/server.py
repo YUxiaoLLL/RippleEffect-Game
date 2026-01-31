@@ -1878,6 +1878,19 @@ def game():
     return render_template('integrated_view.html')
 
 
+@app.route('/negotiation')
+def negotiation():
+    """Serves the negotiation interface."""
+    return render_template('negotiation_mvp.html')
+
+
+@app.route('/visualization')
+def visualization():
+    """Serves the visualization interface."""
+    return ripple_view()
+
+
+
 # --- Multiplayer Room Routes ---
 
 import socket
