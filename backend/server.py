@@ -3349,9 +3349,4 @@ if __name__ == '__main__':
         run_kwargs['ssl_context'] = (ssl_cert, ssl_key)
     socketio.run(app, **run_kwargs)
 
-        'allow_unsafe_werkzeug': True,
-    }
-    if ssl_cert and ssl_key:
-        run_kwargs['ssl_context'] = (ssl_cert, ssl_key)
-    socketio.run(app, **run_kwargs)
 
