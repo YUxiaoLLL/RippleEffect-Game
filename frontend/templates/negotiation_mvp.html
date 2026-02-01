@@ -1077,11 +1077,27 @@ function updateTurnControls() {
                     clearInterval(countdownIntervalId);
                     countdownIntervalId = null;
 
-                    fetch(`/api/rooms/${state.roomId}/timeout_turn`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ playerId: state.myPlayerId })
-                    }).then(() => pollOnce()).catch(() => {});
+                    if (state && state.isHost) {
+                        fetch(`/api/rooms/${state.roomId}/tick`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ playerId: state.myPlayerId })
+                        })
+                        .then((res) => {
+                            if (res && !res.ok) {
+                                return fetch(`/api/rooms/${state.roomId}/timeout_turn`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ playerId: state.myPlayerId })
+                                });
+                            }
+                            return res;
+                        })
+                        .then(() => pollOnce())
+                        .catch(() => {});
+                    } else {
+                        pollOnce();
+                    }
                 }
             }, 250);
         }

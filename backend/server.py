@@ -36,6 +36,7 @@ from constraint_layer import ConstraintLayer, state_from_dict, state_to_dict, Co
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import HTTPException
 from zone_context import load_zone_facts, infer_active_zone_id, compute_issue_tag, zone_context_text, validate_ai_dialogue
+from eventlet.semaphore import Semaphore
 
 # --- Database & Logging Setup (M2) ---
 import sqlite3
@@ -246,6 +247,16 @@ def _log_unhandled_exception(e):
 # --- Multiplayer Room State ---
 ROOMS = {}  # Global in-memory room storage
 MAX_ROOMS_TOTAL = 3 # M1: Limit total rooms for stability
+
+ROOM_LOCKS = {}
+
+def _get_room_lock(room_id):
+    rid = str(room_id or '').upper()
+    lock = ROOM_LOCKS.get(rid)
+    if lock is None:
+        lock = Semaphore(1)
+        ROOM_LOCKS[rid] = lock
+    return lock
 
 # M1: Global Access Gate
 SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or '2026'
@@ -885,6 +896,50 @@ def _enforce_phase_timeout(room_id, room):
 
     room['game_state'] = game_state
     return bool(changed)
+
+
+def _tick_phase_once(room_id, room):
+    if not room or room.get('phase') != 'inGame':
+        return False
+
+    players = room.get('players', []) or []
+    total_humans = sum(1 for p in players if p.get('id'))
+    ready_by = room.get('readyBy') or []
+    try:
+        ready_count = len(set([str(x) for x in ready_by if x]))
+    except Exception:
+        ready_count = 0
+    if total_humans > 0 and ready_count < total_humans:
+        return False
+
+    game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    if negotiation_state.get('outcome'):
+        return False
+
+    deadline = game_state.get('phase_deadline_ts')
+    if not deadline:
+        rp = str(game_state.get('round_phase') or 'preparation').lower()
+        try:
+            round_idx = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            round_idx = 1
+        if rp == 'submission':
+            _auto_fill_ai_submissions(game_state)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds(rp, round_idx))
+        room['game_state'] = game_state
+        return True
+
+    try:
+        now_ms = int(time.time() * 1000)
+        dl = int(deadline or 0)
+    except Exception:
+        return False
+
+    if not dl or now_ms < dl:
+        return False
+
+    return bool(_advance_round_phase(room_id, room))
 
 @app.route('/profile/<string:char_id>')
 def view_profile(char_id):
@@ -2108,7 +2163,6 @@ def get_room_state(room_id):
     if room_id not in ROOMS:
         return jsonify({'error': 'Room not found.'}), 404
     room = ROOMS.get(room_id)
-    _enforce_phase_timeout(room_id, room)
     return jsonify(_get_public_room_state(room_id))
 
 
@@ -2119,7 +2173,6 @@ def get_negotiation_state():
     if room_id and room_id in ROOMS:
         room = ROOMS[room_id]
         if room.get('phase') == 'inGame':
-            _enforce_phase_timeout(room_id, room)
             game_state = room.get('game_state') or {}
             negotiation_state = game_state.get('negotiation_state') or {}
 
@@ -2929,8 +2982,6 @@ def send_message(room_id):
     if total_humans > 0 and ready_count < total_humans:
         return jsonify({'error': 'Waiting for all players to start.', 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 400
 
-    _enforce_phase_timeout(room_id, room)
-
     payload = request.get_json(silent=True) or {}
     player_id = payload.get('playerId') or session.get('player_id')
     text = payload.get('text', '').strip()
@@ -2943,6 +2994,15 @@ def send_message(room_id):
     game_state = room.get('game_state', {})
     if str(game_state.get('round_phase') or '').lower() != 'submission':
         return jsonify({'error': 'Not in submission phase.', 'roundPhase': game_state.get('round_phase')}), 400
+
+    try:
+        dl = int(game_state.get('phase_deadline_ts') or 0)
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        dl = 0
+        now_ms = 0
+    if dl and now_ms >= dl:
+        return jsonify({'error': 'Submission phase ended. Please wait for next phase.', 'roundPhase': game_state.get('round_phase')}), 400
 
     if not text:
         return jsonify({'error': 'Message text required.'}), 400
@@ -3122,7 +3182,18 @@ def timeout_turn(room_id):
     if total_humans > 0 and ready_count < total_humans:
         return jsonify({'timedOut': False, 'phase': 'ready', 'readyCount': ready_count, 'readyTotal': total_humans}), 200
 
-    changed = _enforce_phase_timeout(room_id, room)
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    is_host = bool(player_id) and (room.get('hostId') == player_id)
+
+    changed = False
+    if is_host:
+        lock = _get_room_lock(room_id)
+        lock.acquire()
+        try:
+            changed = _tick_phase_once(room_id, room)
+        finally:
+            lock.release()
     game_state = room.get('game_state') or {}
     negotiation_state = game_state.get('negotiation_state') or {}
     dl = game_state.get('phase_deadline_ts')
@@ -3134,6 +3205,57 @@ def timeout_turn(room_id):
     return jsonify({
         'ok': True,
         'timedOut': bool(changed),
+        'roundPhase': game_state.get('round_phase'),
+        'phaseDeadlineTs': dl,
+        'phaseRemainingSec': remaining,
+        'phaseDurationSec': game_state.get('phase_duration_sec'),
+        'outcome': negotiation_state.get('outcome'),
+        'winnerZone': negotiation_state.get('winner_zone'),
+        'winnerCounts': negotiation_state.get('winner_counts'),
+    })
+
+
+@app.route('/api/rooms/<room_id>/tick', methods=['POST'])
+def tick_room(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    if not player_id:
+        return jsonify({'error': 'Not joined.'}), 403
+
+    if room.get('hostId') != player_id:
+        return jsonify({'error': 'Only host can tick.'}), 403
+
+    lock = _get_room_lock(room_id)
+    lock.acquire()
+    try:
+        changed = _tick_phase_once(room_id, room)
+    finally:
+        lock.release()
+
+    game_state = room.get('game_state') or {}
+    negotiation_state = game_state.get('negotiation_state') or {}
+    dl = game_state.get('phase_deadline_ts')
+    try:
+        remaining = max(0, int(math.ceil(((int(dl or 0)) - int(time.time() * 1000)) / 1000.0))) if dl else None
+    except Exception:
+        remaining = None
+
+    try:
+        socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+    except Exception:
+        pass
+
+    return jsonify({
+        'ok': True,
+        'changed': bool(changed),
         'roundPhase': game_state.get('round_phase'),
         'phaseDeadlineTs': dl,
         'phaseRemainingSec': remaining,
