@@ -222,6 +222,55 @@
             </div>
 
             <div id="waitingModeRow" class="hidden mx-1 px-3 py-4 rounded-xl bg-gray-50 border border-gray-200 text-sm font-medium text-gray-700 text-center">Please read, think about others’ conversations, and prepare for your next round.</div>
+
+            <div id="actionPhaseRow" class="hidden mx-1 px-3 py-4 rounded-xl bg-white border border-gray-200">
+                <div class="text-sm font-bold text-gray-800 text-center" id="actionPhaseTitle">ACTION phase</div>
+                <div class="text-xs text-gray-600 text-center mt-1" id="actionPhaseHint">Spend tokens to persuade or pressure one player.</div>
+
+                <div class="mt-3">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Target</div>
+                    <select id="actionTargetSelect" class="mt-1 w-full px-3 py-2 bg-gray-100 rounded-lg text-sm">
+                        <option value="">Choose a player…</option>
+                    </select>
+                </div>
+
+                <div class="mt-3">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Suggested zone</div>
+                    <div class="flex gap-2 mt-1">
+                        <button id="actionZoneA1" class="flex-1 py-2 rounded-lg border-2 border-orange-500 text-orange-600 font-bold text-xs hover:bg-orange-50 transition-colors">A1</button>
+                        <button id="actionZoneA2" class="flex-1 py-2 rounded-lg border-2 border-blue-500 text-blue-600 font-bold text-xs hover:bg-blue-50 transition-colors">A2</button>
+                        <button id="actionZoneK1" class="flex-1 py-2 rounded-lg border-2 border-green-500 text-green-600 font-bold text-xs hover:bg-green-50 transition-colors">K1</button>
+                    </div>
+                </div>
+
+                <div class="mt-3 flex gap-2">
+                    <button id="actionSendPersuade" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Persuade (2)</button>
+                    <button id="actionSendPressure" class="flex-1 py-2 rounded-lg border-2 border-gray-800 text-gray-900 font-bold text-xs hover:bg-gray-50 transition-colors">Pressure (4)</button>
+                </div>
+
+                <div id="actionPhaseStatus" class="mt-2 text-[11px] text-gray-600 text-center"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="uiToastContainer" class="fixed left-1/2 -translate-x-1/2 bottom-24 z-[80] space-y-2 pointer-events-none"></div>
+
+<div id="uiCenterOverlay" class="hidden fixed inset-0 z-[85] flex items-center justify-center pointer-events-none">
+    <div class="mx-6 max-w-sm w-full bg-black/70 backdrop-blur text-white rounded-2xl px-6 py-5 text-center">
+        <div id="uiCenterTitle" class="text-lg font-bold"></div>
+        <div id="uiCenterMessage" class="text-sm mt-2"></div>
+    </div>
+</div>
+
+<div id="actionOfferModal" class="hidden fixed inset-0 z-[90]">
+    <div class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl p-6">
+        <div class="text-sm font-bold text-gray-800" id="actionOfferTitle">Incoming offer</div>
+        <div class="text-sm text-gray-700 mt-2" id="actionOfferBody"></div>
+        <div class="mt-4 flex gap-2">
+            <button id="actionOfferDecline" class="flex-1 py-3 rounded-xl border-2 border-gray-300 text-gray-800 font-bold text-sm">Decline</button>
+            <button id="actionOfferAccept" class="flex-1 py-3 rounded-xl bg-gray-900 text-white font-bold text-sm">Accept</button>
         </div>
     </div>
 </div>
@@ -734,6 +783,17 @@ async function initializeNegotiation() {
             }
 
             renderUI();
+
+            try {
+                const messageInput = document.getElementById('messageInput');
+                if (messageInput && state.roomId && state.myPlayerId) {
+                    const key = `ripple_draft_${state.roomId}_${state.myPlayerId}`;
+                    const saved = localStorage.getItem(key);
+                    if (saved && !messageInput.value) {
+                        messageInput.value = saved;
+                    }
+                }
+            } catch (e) {}
             
             // Start polling if multiplayer
             if (state.roomId) {
@@ -780,11 +840,8 @@ async function pollOnce() {
             if (prevPhase && prevPhase !== 'submission' && state.phase === 'submission') {
                 state.hasSubmitted = false;
                 state.turnPhase = 'statement';
-                state.statementDraft = '';
                 state.selectedIntentZone = null;
                 state.selectedInfluenceAction = null;
-                const messageInput = document.getElementById('messageInput');
-                if (messageInput) messageInput.value = '';
                 selectZone(null);
             }
 
@@ -804,6 +861,9 @@ function renderUI() {
     renderMessages();
     renderTurnOrder();
     updateTurnControls();
+    renderUiEvents();
+    renderActionPhaseUI();
+    renderIncomingOfferModal();
 
     const roundTitle = document.getElementById('roundTitle');
     if (roundTitle) {
@@ -969,6 +1029,7 @@ function updateTurnControls() {
     const inReview = phase === 'review';
     const inSubmission = phase === 'submission';
     const inTransition = phase === 'transition';
+    const inAction = phase === 'action';
 
     if (isMultiplayer && state && state.phase === 'ready') {
         if (statementModeRow) statementModeRow.classList.add('hidden');
@@ -1132,6 +1193,8 @@ function updateTurnControls() {
         if (intentModeRow) intentModeRow.classList.add('hidden');
         if (inputModeRow) inputModeRow.classList.add('hidden');
         if (waitingModeRow) waitingModeRow.classList.remove('hidden');
+        const actionRow = document.getElementById('actionPhaseRow');
+        if (actionRow) actionRow.classList.add('hidden');
 
         if (input) {
             input.disabled = true;
@@ -1148,6 +1211,34 @@ function updateTurnControls() {
             btn.classList.add('opacity-50', 'cursor-not-allowed');
         });
         if (stepHint) stepHint.textContent = inReview ? 'Review — locked' : 'Transition...';
+        return;
+    }
+
+    if (inAction) {
+        if (statementModeRow) statementModeRow.classList.add('hidden');
+        if (intentModeRow) intentModeRow.classList.add('hidden');
+        if (inputModeRow) inputModeRow.classList.add('hidden');
+        if (waitingModeRow) waitingModeRow.classList.add('hidden');
+
+        const actionRow = document.getElementById('actionPhaseRow');
+        if (actionRow) actionRow.classList.remove('hidden');
+
+        if (input) {
+            input.disabled = true;
+            input.placeholder = '';
+        }
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'ACTION';
+            sendBtn.classList.remove('bg-gray-800', 'hover:bg-black');
+            sendBtn.classList.add('bg-gray-400');
+        }
+        zoneBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+
+        if (stepHint) stepHint.textContent = 'ACTION — spend tokens to persuade or pressure another player';
         return;
     }
 
@@ -1204,6 +1295,11 @@ function updateTurnControls() {
         state.selectedIntentZone = state.selectedIntentZone || null;
     }
 
+    const lock = state && state.actionState && state.actionState.lock ? state.actionState.lock : null;
+    if (lock && lock.forced_intent && state.turnPhase === 'intent') {
+        state.selectedIntentZone = String(lock.forced_intent).toUpperCase();
+    }
+
     if (statementModeRow) statementModeRow.classList.toggle('hidden', state.turnPhase !== 'statement');
     if (intentModeRow) intentModeRow.classList.toggle('hidden', state.turnPhase !== 'intent');
     if (inputModeRow) inputModeRow.classList.toggle('hidden', state.turnPhase === 'waiting');
@@ -1232,7 +1328,8 @@ function updateTurnControls() {
 
     zoneBtns.forEach(btn => {
         const enabled = state.turnPhase === 'intent';
-        btn.disabled = !enabled;
+        const locked = Boolean(lock && lock.forced_intent);
+        btn.disabled = !enabled || locked;
         btn.classList.toggle('opacity-50', !enabled);
         btn.classList.toggle('cursor-not-allowed', !enabled);
     });
@@ -1242,7 +1339,9 @@ function updateTurnControls() {
     const hasZone = Boolean(state.selectedIntentZone);
     if (stepHint) {
         if (state.turnPhase === 'statement') stepHint.textContent = 'Step 1 / 2 — Choose how to speak + write your statement';
-        if (state.turnPhase === 'intent') stepHint.textContent = 'Step 2 / 2 — Place your intent marker (choose a zone)';
+        if (state.turnPhase === 'intent') {
+            stepHint.textContent = (lock && lock.forced_intent) ? `Step 2 / 2 — Locked to ${String(lock.forced_intent).toUpperCase()} this round` : 'Step 2 / 2 — Place your intent marker (choose a zone)';
+        }
     }
 
     if (state.turnPhase === 'statement' && sendBtn) {
@@ -1353,6 +1452,12 @@ async function submitTurn() {
             state.selectedInfluenceAction = null;
             // Reset UI
             messageInput.value = '';
+            try {
+                if (state && state.roomId && state.myPlayerId) {
+                    const key = `ripple_draft_${state.roomId}_${state.myPlayerId}`;
+                    localStorage.removeItem(key);
+                }
+            } catch (e) {}
             state.selectedIntentZone = null;
             selectZone(null); // Clear selection visuals
             
@@ -1382,6 +1487,228 @@ window.selectZone = selectZone;
 window.submitTurn = submitTurn;
 window.showStakeholderProfile = showStakeholderProfile;
 
+const seenUiEventIds = new Set();
+
+function renderUiEvents() {
+    const events = (state && state.actionState && Array.isArray(state.actionState.uiEvents)) ? state.actionState.uiEvents : [];
+    if (!events.length) return;
+
+    const now = Date.now();
+
+    for (const ev of events) {
+        if (!ev || !ev.id) continue;
+        if (seenUiEventIds.has(ev.id)) continue;
+        if (ev.expiresTs && Number(ev.expiresTs) < now) continue;
+        seenUiEventIds.add(ev.id);
+
+        if (ev.kind === 'toast') {
+            showToast(String(ev.message || ''));
+        } else if (ev.kind === 'center') {
+            const title = ev.title ? String(ev.title) : '';
+            const msg = ev.subtitle ? String(ev.subtitle) : String(ev.message || '');
+            showCenterOverlay(title, msg, Math.max(1000, (ev.expiresTs ? (Number(ev.expiresTs) - now) : 4000)));
+        }
+    }
+}
+
+function showToast(message) {
+    if (!message) return;
+    const wrap = document.getElementById('uiToastContainer');
+    if (!wrap) return;
+    const el = document.createElement('div');
+    el.className = 'px-4 py-3 rounded-xl bg-black/80 backdrop-blur text-white text-sm shadow-lg max-w-sm';
+    el.textContent = message;
+    wrap.appendChild(el);
+    setTimeout(() => {
+        try { el.remove(); } catch (e) {}
+    }, 7000);
+}
+
+let centerOverlayTimeoutId = null;
+function showCenterOverlay(title, message, durationMs) {
+    const overlay = document.getElementById('uiCenterOverlay');
+    const titleEl = document.getElementById('uiCenterTitle');
+    const msgEl = document.getElementById('uiCenterMessage');
+    if (!overlay || !msgEl) return;
+
+    if (titleEl) titleEl.textContent = title || '';
+    msgEl.textContent = message || '';
+    overlay.classList.remove('hidden');
+    if (centerOverlayTimeoutId) clearTimeout(centerOverlayTimeoutId);
+    centerOverlayTimeoutId = setTimeout(() => {
+        overlay.classList.add('hidden');
+        centerOverlayTimeoutId = null;
+    }, Math.max(1000, Number(durationMs || 4000)));
+}
+
+let selectedActionZone = null;
+function setSelectedActionZone(z) {
+    selectedActionZone = z;
+    ['A1', 'A2', 'K1'].forEach(zone => {
+        const btn = document.getElementById(`actionZone${zone}`);
+        if (!btn) return;
+        const on = zone === z;
+        btn.classList.toggle('ring-2', on);
+        btn.classList.toggle('ring-offset-1', on);
+        btn.classList.toggle('bg-opacity-20', on);
+        if (on) {
+            if (zone === 'A1') btn.classList.add('bg-orange-100');
+            if (zone === 'A2') btn.classList.add('bg-blue-100');
+            if (zone === 'K1') btn.classList.add('bg-green-100');
+        } else {
+            btn.classList.remove('bg-orange-100', 'bg-blue-100', 'bg-green-100');
+        }
+    });
+}
+
+async function sendActionOffer(type) {
+    if (!state || !state.roomId || !state.myPlayerId) return;
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase !== 'action') return;
+    const st = state.actionState || {};
+    if (st.hasSent) return;
+
+    const sel = document.getElementById('actionTargetSelect');
+    const to = sel ? String(sel.value || '') : '';
+    const zone = selectedActionZone;
+    if (!to) {
+        showToast('Choose a target player first.');
+        return;
+    }
+    if (!zone) {
+        showToast('Choose a zone first.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/rooms/${state.roomId}/action/offer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId: state.myPlayerId, to, type, zone })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data && (data.error || data.message) ? (data.error || data.message) : 'Failed to send offer.');
+            await pollOnce();
+            return;
+        }
+        showToast('Offer sent.');
+        await pollOnce();
+    } catch (e) {
+        showToast('Failed to send offer.');
+    }
+}
+
+async function respondToOffer(decision) {
+    if (!state || !state.roomId || !state.myPlayerId) return;
+    const offer = state && state.actionState ? state.actionState.incomingOffer : null;
+    if (!offer || !offer.id) return;
+    try {
+        const res = await fetch(`/api/rooms/${state.roomId}/action/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId: state.myPlayerId, offerId: offer.id, decision })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data && (data.error || data.message) ? (data.error || data.message) : 'Failed to respond.');
+            await pollOnce();
+            return;
+        }
+        showToast(decision === 'accept' ? 'Accepted.' : 'Declined.');
+        await pollOnce();
+    } catch (e) {
+        showToast('Failed to respond.');
+    }
+}
+
+function bindActionUiHandlers() {
+    const a1 = document.getElementById('actionZoneA1');
+    const a2 = document.getElementById('actionZoneA2');
+    const k1 = document.getElementById('actionZoneK1');
+    if (a1) a1.addEventListener('click', () => setSelectedActionZone('A1'));
+    if (a2) a2.addEventListener('click', () => setSelectedActionZone('A2'));
+    if (k1) k1.addEventListener('click', () => setSelectedActionZone('K1'));
+
+    const sendPersuade = document.getElementById('actionSendPersuade');
+    const sendPressure = document.getElementById('actionSendPressure');
+    if (sendPersuade) sendPersuade.addEventListener('click', () => sendActionOffer('persuade'));
+    if (sendPressure) sendPressure.addEventListener('click', () => sendActionOffer('pressure'));
+
+    const acceptBtn = document.getElementById('actionOfferAccept');
+    const declineBtn = document.getElementById('actionOfferDecline');
+    if (acceptBtn) acceptBtn.addEventListener('click', () => respondToOffer('accept'));
+    if (declineBtn) declineBtn.addEventListener('click', () => respondToOffer('decline'));
+
+    const messageInputEl = document.getElementById('messageInput');
+    if (messageInputEl) {
+        messageInputEl.addEventListener('input', () => {
+            try {
+                if (!state || !state.roomId || !state.myPlayerId) return;
+                const key = `ripple_draft_${state.roomId}_${state.myPlayerId}`;
+                localStorage.setItem(key, String(messageInputEl.value || ''));
+            } catch (e) {}
+        });
+    }
+}
+
+function renderActionPhaseUI() {
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    if (phase !== 'action') return;
+
+    const sel = document.getElementById('actionTargetSelect');
+    if (!sel) return;
+
+    const humans = (state.stakeholders || []).filter(s => s && s.is_player && s.id && s.id !== state.myPlayerId);
+    const existing = new Set(Array.from(sel.options).map(o => o.value));
+    humans.forEach(h => {
+        if (existing.has(h.id)) return;
+        const opt = document.createElement('option');
+        opt.value = h.id;
+        opt.textContent = h.name || h.role_name || h.role_id || h.id;
+        sel.appendChild(opt);
+    });
+
+    const st = state.actionState || {};
+    const status = document.getElementById('actionPhaseStatus');
+    if (status) {
+        if (st.hasSent) status.textContent = 'Offer sent (you can only send once this round).';
+        else status.textContent = '';
+    }
+}
+
+function renderIncomingOfferModal() {
+    const modal = document.getElementById('actionOfferModal');
+    if (!modal) return;
+
+    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+    const offer = state && state.actionState ? state.actionState.incomingOffer : null;
+    if (phase !== 'action' || !offer) {
+        modal.classList.add('hidden');
+        return;
+    }
+
+    const titleEl = document.getElementById('actionOfferTitle');
+    const bodyEl = document.getElementById('actionOfferBody');
+
+    const fromId = offer.from;
+    const fromStakeholder = (state.stakeholders || []).find(s => s && s.id === fromId);
+    const fromName = fromStakeholder ? (fromStakeholder.name || fromStakeholder.role_name || fromStakeholder.role_id) : fromId;
+    const typ = String(offer.type || '').toLowerCase();
+    const zone = String(offer.zone || '').toUpperCase();
+
+    if (titleEl) titleEl.textContent = typ === 'pressure' ? 'Pressure offer' : 'Persuade offer';
+    if (bodyEl) {
+        if (typ === 'pressure') {
+            bodyEl.textContent = `${fromName} is pressuring you to support ${zone}. Accept gives you +2 Tokens and locks your intent this round. Decline gives you +1 Token.`;
+        } else {
+            bodyEl.textContent = `${fromName} is persuading you to consider ${zone}. Accept gives you +1 Token (no lock).`;
+        }
+    }
+
+    modal.classList.remove('hidden');
+}
+
 window.addEventListener('message', (event) => {
     if (!event || !event.data) return;
     if (event.data.type === 'ZONE_CLICK') {
@@ -1391,22 +1718,32 @@ window.addEventListener('message', (event) => {
     }
 });
 
-document.getElementById('action-gentle').addEventListener('click', () => {
-    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
-    if (phase !== 'submission') return;
-    if (state.hasSubmitted) return;
-    if (state.turnPhase !== 'statement') return;
-    state.selectedInfluenceAction = 'gentle_persuasion';
-    updateTurnControls();
-});
+window.addEventListener('load', () => {
+    bindActionUiHandlers();
 
-document.getElementById('action-pressure').addEventListener('click', () => {
-    const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
-    if (phase !== 'submission') return;
-    if (state.hasSubmitted) return;
-    if (state.turnPhase !== 'statement') return;
-    state.selectedInfluenceAction = 'pressure_opponent';
-    updateTurnControls();
+    const gentleBtn = document.getElementById('action-gentle');
+    if (gentleBtn) {
+        gentleBtn.addEventListener('click', () => {
+            const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+            if (phase !== 'submission') return;
+            if (state.hasSubmitted) return;
+            if (state.turnPhase !== 'statement') return;
+            state.selectedInfluenceAction = 'gentle_persuasion';
+            updateTurnControls();
+        });
+    }
+
+    const pressureBtn = document.getElementById('action-pressure');
+    if (pressureBtn) {
+        pressureBtn.addEventListener('click', () => {
+            const phase = String((state && state.phase) ? state.phase : '').toLowerCase();
+            if (phase !== 'submission') return;
+            if (state.hasSubmitted) return;
+            if (state.turnPhase !== 'statement') return;
+            state.selectedInfluenceAction = 'pressure_opponent';
+            updateTurnControls();
+        });
+    }
 });
 
 document.getElementById('zoneInfoOverlay').addEventListener('click', closeZoneInfo);

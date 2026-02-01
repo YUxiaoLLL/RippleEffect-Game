@@ -434,7 +434,7 @@ INITIAL_SUPPORT_SCORE = 75
 INITIAL_OPPOSE_SCORE = 25
 INFLUENCE_ACTION_COSTS = {
     'gentle_persuasion': 2,
-    'pressure_opponent': 5
+    'pressure_opponent': 4
 }
 INFLUENCE_ACTION_EFFECTS = {}
 
@@ -485,7 +485,7 @@ NEGOTIATION_STYLES = ['Collaborative', 'Competitive', 'Accommodating']
 MAX_ROUNDS = 5  # v0: 5 Rounds for better pacing
 MIN_STATEMENT_WORDS = 15  # New constant
 EVENT_PROBABILITY = 0.25  # 25% chance of an event each round
-TOKEN_REGEN_RATE = 2  # How many influence tokens characters regain each round
+TOKEN_REGEN_RATE = 1  # How many influence tokens characters regain each round
 INITIAL_TRUST = 50  # Default starting trust value (0-100)
 MAX_PLAYER_TOKENS = 12  # Maximum tokens the player can hold
 BASE_LEAK_CHANCE = 0.4 # 40% chance for pressure to leak
@@ -494,26 +494,13 @@ TURN_DURATION_SECONDS = 90
 
 PREPARATION_DURATION_SECONDS = 120
 REVIEW_DURATION_SECONDS = 60
+ACTION_DURATION_SECONDS = 15
 SUBMISSION_DURATION_SECONDS = 60
 TRANSITION_DURATION_SECONDS = 5
 
 
 def _max_tokens_for_role(role_id, starting_tokens):
-    try:
-        base = int(starting_tokens or 0)
-    except Exception:
-        base = 0
-
-    if base <= 0:
-        try:
-            base = int((ROLES.get(role_id) or {}).get('initial_influence_tokens', 5) or 5)
-        except Exception:
-            base = 5
-
-    try:
-        return max(1, int(base * 1.5))
-    except Exception:
-        return max(1, base)
+    return int(MAX_PLAYER_TOKENS)
 
 
 def _compute_zone_winner_from_round_meta(round_meta):
@@ -587,11 +574,229 @@ def _round_phase_duration_seconds(round_phase, round_idx):
         return PREPARATION_DURATION_SECONDS
     if rp == 'review':
         return REVIEW_DURATION_SECONDS
+    if rp == 'action':
+        return ACTION_DURATION_SECONDS
     if rp == 'submission':
         return SUBMISSION_DURATION_SECONDS
     if rp == 'transition':
         return TRANSITION_DURATION_SECONDS
     return SUBMISSION_DURATION_SECONDS
+
+
+def _append_ui_event(negotiation_state, event):
+    if not isinstance(negotiation_state, dict) or not isinstance(event, dict):
+        return
+    negotiation_state.setdefault('ui_events', [])
+    try:
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        now_ms = 0
+    expires_ts = event.get('expiresTs')
+    if not expires_ts:
+        event['expiresTs'] = now_ms + 4000
+    if not event.get('id'):
+        event['id'] = f"evt_{now_ms}_{int(random.random() * 1000000)}"
+    negotiation_state['ui_events'].append(event)
+
+
+def _prune_ui_events(negotiation_state):
+    if not isinstance(negotiation_state, dict):
+        return
+    events = negotiation_state.get('ui_events')
+    if not isinstance(events, list):
+        negotiation_state['ui_events'] = []
+        return
+    try:
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        now_ms = 0
+    kept = []
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        try:
+            exp = int(e.get('expiresTs') or 0)
+        except Exception:
+            exp = 0
+        if exp and now_ms > exp:
+            continue
+        kept.append(e)
+    negotiation_state['ui_events'] = kept
+
+
+def _init_action_phase(game_state, round_idx):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    negotiation_state['action_round'] = int(round_idx or 1)
+    negotiation_state['action_offers'] = []
+    negotiation_state['action_locks'] = negotiation_state.get('action_locks') or {}
+    negotiation_state['action_sent_by'] = {}
+    negotiation_state['action_received_by'] = {}
+    negotiation_state['action_attempted_by'] = {}
+
+    cap = {}
+    characters = game_state.get('characters') or []
+    for c in characters:
+        cid = c.get('id')
+        if not cid:
+            continue
+        try:
+            t = int(c.get('influence_tokens', 0) or 0)
+        except Exception:
+            t = 0
+        if t >= int(MAX_PLAYER_TOKENS):
+            cap[cid] = True
+
+    try:
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        now_ms = 0
+    for cid in cap.keys():
+        _append_ui_event(negotiation_state, {
+            'audience': cid,
+            'kind': 'center',
+            'message': 'Max = 12 Tokens. No action this turn will automatically deduct 2 tokens.',
+            'expiresTs': now_ms + 4000,
+        })
+    negotiation_state['action_cap_at_start'] = cap
+    game_state['negotiation_state'] = negotiation_state
+
+
+def _apply_action_cap_penalties(game_state, round_idx):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    try:
+        action_round = int(negotiation_state.get('action_round') or 0)
+    except Exception:
+        action_round = 0
+    if action_round != int(round_idx or 1):
+        return
+
+    cap = negotiation_state.get('action_cap_at_start') or {}
+    attempted = negotiation_state.get('action_attempted_by') or {}
+
+    characters = game_state.get('characters') or []
+    char_map = {c.get('id'): c for c in characters if c.get('id')}
+    for cid, was_cap in cap.items():
+        if not was_cap:
+            continue
+        if attempted.get(cid):
+            continue
+        c = char_map.get(cid)
+        if not c:
+            continue
+        try:
+            cur = int(c.get('influence_tokens', 0) or 0)
+        except Exception:
+            cur = 0
+        c['influence_tokens'] = max(0, cur - 2)
+        _append_ui_event(negotiation_state, {
+            'audience': cid,
+            'kind': 'center',
+            'message': 'No action taken at max tokens: -2 Tokens.',
+            'expiresTs': int(time.time() * 1000) + 4000,
+        })
+
+    game_state['characters'] = characters
+    game_state['negotiation_state'] = negotiation_state
+
+
+def _finalize_action_phase(game_state, round_idx):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    offers = negotiation_state.get('action_offers') or []
+    if not isinstance(offers, list):
+        offers = []
+    try:
+        round_idx = int(round_idx or 1)
+    except Exception:
+        round_idx = 1
+
+    characters = game_state.get('characters') or []
+    char_map = {c.get('id'): c for c in characters if c.get('id')}
+
+    for o in offers:
+        if not isinstance(o, dict):
+            continue
+        try:
+            if int(o.get('round') or 0) != int(round_idx):
+                continue
+        except Exception:
+            continue
+        if o.get('status') != 'pending':
+            continue
+        o['status'] = 'expired'
+        if o.get('type') == 'pressure':
+            to_id = o.get('to')
+            from_id = o.get('from')
+            target = char_map.get(to_id)
+            if target:
+                try:
+                    cur = int(target.get('influence_tokens', 0) or 0)
+                except Exception:
+                    cur = 0
+                target['influence_tokens'] = min(int(MAX_PLAYER_TOKENS), cur + 1)
+                target['max_tokens'] = int(MAX_PLAYER_TOKENS)
+            negotiation_state.setdefault('review_toasts', [])
+            negotiation_state['review_toasts'].append({
+                'round': round_idx,
+                'message': f"{to_id} rejected Pressure from {from_id} (+1 Token)",
+                'durationMs': 7000,
+            })
+
+    game_state['characters'] = characters
+    game_state['negotiation_state'] = negotiation_state
+
+
+def _flush_review_toasts(game_state, round_idx):
+    if not game_state:
+        return
+    negotiation_state = game_state.get('negotiation_state') or {}
+    items = negotiation_state.get('review_toasts')
+    if not isinstance(items, list) or not items:
+        negotiation_state['review_toasts'] = []
+        game_state['negotiation_state'] = negotiation_state
+        return
+
+    try:
+        round_idx = int(round_idx or 1)
+    except Exception:
+        round_idx = 1
+    try:
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        now_ms = 0
+
+    remaining = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        try:
+            it_round = int(it.get('round') or 0)
+        except Exception:
+            it_round = 0
+        if it_round != (round_idx - 1):
+            remaining.append(it)
+            continue
+        msg = str(it.get('message') or '').strip()
+        if not msg:
+            continue
+        try:
+            dur = int(it.get('durationMs') or 7000)
+        except Exception:
+            dur = 7000
+        _append_ui_event(negotiation_state, {
+            'audience': None,
+            'kind': 'toast',
+            'message': msg,
+            'expiresTs': now_ms + max(1000, dur),
+        })
+
+    negotiation_state['review_toasts'] = remaining
+    game_state['negotiation_state'] = negotiation_state
 
 
 def _ensure_submission_defaults(game_state):
@@ -794,14 +999,24 @@ def _advance_round_phase(room_id, room):
         round_idx = 1
 
     if rp == 'preparation':
-        next_rp = 'review' if round_idx > 1 else 'submission'
+        next_rp = 'review' if round_idx > 1 else 'action'
         game_state['round_phase'] = next_rp
         game_state['submitted_by'] = []
         game_state['submitted_round'] = round_idx
+        if next_rp == 'action':
+            _init_action_phase(game_state, round_idx)
         if next_rp == 'submission':
             _auto_fill_ai_submissions(game_state)
         _set_phase_deadline(game_state, _round_phase_duration_seconds(next_rp, round_idx))
     elif rp == 'review':
+        game_state['round_phase'] = 'action'
+        game_state['submitted_by'] = []
+        game_state['submitted_round'] = round_idx
+        _init_action_phase(game_state, round_idx)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds('action', round_idx))
+    elif rp == 'action':
+        _finalize_action_phase(game_state, round_idx)
+        _apply_action_cap_penalties(game_state, round_idx)
         game_state['round_phase'] = 'submission'
         game_state['submitted_by'] = []
         game_state['submitted_round'] = round_idx
@@ -816,6 +1031,17 @@ def _advance_round_phase(room_id, room):
             game_state['phase_duration_sec'] = None
         else:
             game_state['round_phase'] = 'transition'
+            try:
+                now_ms = int(time.time() * 1000)
+            except Exception:
+                now_ms = 0
+            _append_ui_event(negotiation_state, {
+                'audience': None,
+                'kind': 'center',
+                'title': f"Review Round {int(round_idx)}",
+                'subtitle': f"Review all the conversations, and prepare for the action and conversations in the upcoming Round {int(round_idx) + 1}.",
+                'expiresTs': now_ms + int(TRANSITION_DURATION_SECONDS * 1000),
+            })
             _set_phase_deadline(game_state, _round_phase_duration_seconds('transition', round_idx))
     elif rp == 'transition':
         negotiation_state = game_state.get('negotiation_state') or {}
@@ -823,22 +1049,81 @@ def _advance_round_phase(room_id, room):
             round_idx = int(negotiation_state.get('round', 1) or 1)
         except Exception:
             round_idx = 1
-        next_rp = 'review' if round_idx > 1 else 'submission'
+        next_rp = 'review' if round_idx > 1 else 'action'
         game_state['round_phase'] = next_rp
         game_state['submitted_by'] = []
         game_state['submitted_round'] = round_idx
+        if next_rp == 'review':
+            _flush_review_toasts(game_state, round_idx)
+        if next_rp == 'action':
+            _init_action_phase(game_state, round_idx)
         if next_rp == 'submission':
             _auto_fill_ai_submissions(game_state)
         _set_phase_deadline(game_state, _round_phase_duration_seconds(next_rp, round_idx))
     else:
-        game_state['round_phase'] = 'submission'
+        game_state['round_phase'] = 'action'
         game_state['submitted_by'] = []
         game_state['submitted_round'] = round_idx
-        _auto_fill_ai_submissions(game_state)
-        _set_phase_deadline(game_state, _round_phase_duration_seconds('submission', round_idx))
+        _init_action_phase(game_state, round_idx)
+        _set_phase_deadline(game_state, _round_phase_duration_seconds('action', round_idx))
 
     room['game_state'] = game_state
     return True
+
+
+def _room_get_action_state_for_player(game_state, player_id):
+    negotiation_state = (game_state or {}).get('negotiation_state') or {}
+    _prune_ui_events(negotiation_state)
+
+    try:
+        round_idx = int(negotiation_state.get('round', 1) or 1)
+    except Exception:
+        round_idx = 1
+    try:
+        action_round = int(negotiation_state.get('action_round') or 0)
+    except Exception:
+        action_round = 0
+    offers = negotiation_state.get('action_offers') or []
+    sent_by = negotiation_state.get('action_sent_by') or {}
+    received_by = negotiation_state.get('action_received_by') or {}
+    locks = negotiation_state.get('action_locks') or {}
+
+    incoming = None
+    if player_id:
+        for o in offers:
+            if not isinstance(o, dict):
+                continue
+            if int(o.get('round') or 0) != int(action_round or round_idx):
+                continue
+            if o.get('to') == player_id and o.get('status') == 'pending':
+                incoming = o
+                break
+
+    lock = locks.get(player_id) if isinstance(locks, dict) and player_id else None
+    if isinstance(lock, dict):
+        try:
+            if int(lock.get('round') or 0) != int(round_idx):
+                lock = None
+        except Exception:
+            lock = None
+
+    ui_events = negotiation_state.get('ui_events') or []
+    filtered_events = []
+    for e in ui_events:
+        if not isinstance(e, dict):
+            continue
+        aud = e.get('audience')
+        if aud is None or (player_id and aud == player_id):
+            filtered_events.append(e)
+
+    return {
+        'round': action_round,
+        'hasSent': bool(player_id and sent_by.get(player_id)),
+        'hasReceived': bool(player_id and received_by.get(player_id)),
+        'incomingOffer': incoming,
+        'lock': lock,
+        'uiEvents': filtered_events,
+    }
 
 
 def _enforce_phase_timeout(room_id, room):
@@ -1355,11 +1640,11 @@ def regenerate_tokens_for_round(session_data):
     constraint_regen_penalty = session_data.get('token_regen_delta', 0) # From Constraint Layer
 
     if regen_penalty:
-        player_regen = 1
+        player_regen = 0
         session_data['regen_penalty'] = False # Reset after applying
-        print("  Player penalized: +1 token this round (Action Penalty).")
+        print("  Player penalized: +0 token this round (Action Penalty).")
     else:
-        player_regen = 2
+        player_regen = 1
     
     # Apply Constraint Layer Penalty (additive)
     # constraint_regen_penalty is usually negative, e.g., -1
@@ -1377,14 +1662,15 @@ def regenerate_tokens_for_round(session_data):
     for char in characters:
         role_id = char['role_id']
         initial_tokens = ROLES.get(role_id, {}).get('initial_influence_tokens', 5)
-        max_tokens = int(initial_tokens * 1.5)
+        max_tokens = int(MAX_PLAYER_TOKENS)
         
         current_tokens = char.get('influence_tokens', 0)
         
         if char.get('is_player'):
             new_tokens = min(current_tokens + player_regen, max_tokens)
             char['influence_tokens'] = new_tokens
-            if player_profile: player_profile['influence_tokens'] = new_tokens
+            if player_profile:
+                player_profile['influence_tokens'] = new_tokens
             print(f"  Player tokens: {current_tokens} + {player_regen} -> {new_tokens} (Max: {max_tokens})")
         else:
             new_tokens = min(current_tokens + npc_regen, max_tokens)
@@ -2173,6 +2459,7 @@ def get_negotiation_state():
     if room_id and room_id in ROOMS:
         room = ROOMS[room_id]
         if room.get('phase') == 'inGame':
+            _enforce_phase_timeout(room_id, room)
             game_state = room.get('game_state') or {}
             negotiation_state = game_state.get('negotiation_state') or {}
 
@@ -2224,6 +2511,8 @@ def get_negotiation_state():
 
             include_phase_timer = (public_phase != 'ready')
 
+            action_state = _room_get_action_state_for_player(game_state, player_id)
+
             return jsonify({
                 'currentRound': negotiation_state.get('round', 1),
                 'stakeholders': characters,
@@ -2266,6 +2555,7 @@ def get_negotiation_state():
                 'winnerZone': negotiation_state.get('winner_zone'),
                 'winnerCounts': negotiation_state.get('winner_counts'),
                 'lastIntents': negotiation_state.get('last_intents', {}) or {},
+                'actionState': action_state,
             })
 
     if 'negotiation_state' not in session:
@@ -2520,11 +2810,28 @@ def _regen_room_tokens(game_state):
 
     characters = game_state.get('characters', [])
     regen_amount = TOKEN_REGEN_RATE
-    
+
+    try:
+        now_ms = int(time.time() * 1000)
+    except Exception:
+        now_ms = 0
+
     for char in characters:
-        current = char.get('influence_tokens', 0)
-        max_t = char.get('max_tokens', 12)
-        char['influence_tokens'] = min(current + regen_amount, max_t)
+        try:
+            current = int(char.get('influence_tokens', 0) or 0)
+        except Exception:
+            current = 0
+        max_t = int(MAX_PLAYER_TOKENS)
+        new_val = min(current + int(regen_amount), max_t)
+        char['influence_tokens'] = new_val
+        char['max_tokens'] = max_t
+        if current < max_t and new_val >= max_t:
+            _append_ui_event(negotiation_state, {
+                'audience': char.get('id'),
+                'kind': 'center',
+                'message': 'You reached the max (12). You must act next ACTION phase or lose 2 tokens.',
+                'expiresTs': now_ms + 3000,
+            })
 
 
 def _finalize_multiplayer_game_if_needed(game_state):
@@ -3023,6 +3330,22 @@ def send_message(room_id):
     negotiation_state = game_state.get('negotiation_state', {})
     if negotiation_state.get('outcome'):
         return jsonify({'error': 'Game over.', 'outcome': negotiation_state.get('outcome')}), 400
+
+    try:
+        round_idx = int(negotiation_state.get('round', 1) or 1)
+    except Exception:
+        round_idx = 1
+
+    lock = None
+    locks = negotiation_state.get('action_locks') or {}
+    if isinstance(locks, dict):
+        lock = locks.get(player_id)
+    if isinstance(lock, dict):
+        try:
+            if int(lock.get('round') or 0) != int(round_idx):
+                lock = None
+        except Exception:
+            lock = None
     negotiation_state.setdefault('player_action_history', {})
     action_history = negotiation_state['player_action_history'].get(player_id, [])
     cost = _compute_influence_cost(influence_action, role_id, action_history=action_history)
@@ -3049,7 +3372,12 @@ def send_message(room_id):
     negotiation_state['current_round_dialogue'][player_id] = text
 
     # v0: Use explicit intent if provided, otherwise infer
-    if intent:
+    forced_intent = None
+    if lock and (lock.get('forced_intent') in ('A1', 'A2', 'K1')):
+        forced_intent = str(lock.get('forced_intent')).upper()
+    if forced_intent:
+        zid = forced_intent
+    elif intent:
         zid = intent
     else:
         zid = infer_active_zone_id(text, negotiation_state.get('active_zone_id') or 'GLOBAL')
@@ -3069,6 +3397,8 @@ def send_message(room_id):
         'influence_action': influence_action,
         'influence_cost': cost
     }
+    if forced_intent:
+        negotiation_state['current_round_meta'][player_id]['forced_intent'] = forced_intent
 
     # M2: Log Event
     log_event(
@@ -3106,6 +3436,264 @@ def send_message(room_id):
         'winnerZone': negotiation_state.get('winner_zone'),
         'winnerCounts': negotiation_state.get('winner_counts'),
     })
+
+
+@app.route('/api/rooms/<room_id>/action/offer', methods=['POST'])
+def action_offer(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    to_id = payload.get('to')
+    offer_type = payload.get('type')
+    zone = payload.get('zone')
+    if not player_id:
+        return jsonify({'error': 'Player ID required.'}), 400
+
+    lock = _get_room_lock(room_id)
+    lock.acquire()
+    try:
+        game_state = room.get('game_state') or {}
+        if str(game_state.get('round_phase') or '').lower() != 'action':
+            return jsonify({'error': 'Not in action phase.', 'roundPhase': game_state.get('round_phase')}), 400
+
+        negotiation_state = game_state.get('negotiation_state') or {}
+        try:
+            round_idx = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            round_idx = 1
+
+        negotiation_state.setdefault('action_attempted_by', {})
+        negotiation_state['action_attempted_by'][player_id] = True
+
+        if not to_id or not offer_type or not zone:
+            return jsonify({'error': 'Missing fields.'}), 400
+        to_id = str(to_id)
+        if to_id == str(player_id):
+            return jsonify({'error': 'Cannot target yourself.'}), 400
+
+        zone = str(zone).upper()
+        if zone not in ('A1', 'A2', 'K1'):
+            return jsonify({'error': 'Invalid zone.'}), 400
+
+        offer_type = str(offer_type).lower()
+        if offer_type not in ('persuade', 'pressure'):
+            return jsonify({'error': 'Invalid action type.'}), 400
+
+        sent_by = negotiation_state.get('action_sent_by') or {}
+        received_by = negotiation_state.get('action_received_by') or {}
+        if sent_by.get(player_id):
+            return jsonify({'error': 'Already sent an offer this round.'}), 400
+
+        target_char = next((c for c in (game_state.get('characters') or []) if c.get('id') == to_id), None)
+        if not target_char or not target_char.get('is_player'):
+            return jsonify({'error': 'Target must be a human player.'}), 400
+
+        if received_by.get(to_id):
+            # Priority: Pressure can override a pending Persuade
+            pending = None
+            for o in (negotiation_state.get('action_offers') or []):
+                if not isinstance(o, dict):
+                    continue
+                if o.get('to') != to_id:
+                    continue
+                try:
+                    if int(o.get('round') or 0) != int(round_idx):
+                        continue
+                except Exception:
+                    continue
+                if o.get('status') == 'pending':
+                    pending = o
+                    break
+
+            if pending and pending.get('type') == 'persuade' and offer_type == 'pressure':
+                pending['status'] = 'superseded'
+            else:
+                return jsonify({'error': 'Target already received an offer this round.'}), 400
+
+        cost = 2 if offer_type == 'persuade' else 4
+        characters = game_state.get('characters') or []
+        me = next((c for c in characters if c.get('id') == player_id), None)
+        if not me:
+            return jsonify({'error': 'Player not found.'}), 400
+        try:
+            cur_tokens = int(me.get('influence_tokens', 0) or 0)
+        except Exception:
+            cur_tokens = 0
+        if cur_tokens < cost:
+            return jsonify({'error': 'Not enough tokens.', 'cost': cost, 'tokens': cur_tokens}), 400
+
+        me['influence_tokens'] = max(0, cur_tokens - cost)
+        me['max_tokens'] = int(MAX_PLAYER_TOKENS)
+
+        try:
+            now_ms = int(time.time() * 1000)
+        except Exception:
+            now_ms = 0
+        offer_id = f"offer_{now_ms}_{int(random.random() * 1000000)}"
+        offer = {
+            'id': offer_id,
+            'round': round_idx,
+            'from': player_id,
+            'to': to_id,
+            'type': offer_type,
+            'zone': zone,
+            'cost': cost,
+            'status': 'pending',
+            'createdTs': now_ms,
+        }
+
+        negotiation_state.setdefault('action_offers', [])
+        negotiation_state['action_offers'].append(offer)
+        negotiation_state.setdefault('action_sent_by', {})
+        negotiation_state.setdefault('action_received_by', {})
+        negotiation_state['action_sent_by'][player_id] = True
+        negotiation_state['action_received_by'][to_id] = True
+
+        game_state['characters'] = characters
+        game_state['negotiation_state'] = negotiation_state
+        room['game_state'] = game_state
+
+        try:
+            socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+        except Exception:
+            pass
+
+        return jsonify({'ok': True, 'offer': offer, 'tokensAfter': me.get('influence_tokens')})
+    finally:
+        lock.release()
+
+
+@app.route('/api/rooms/<room_id>/action/respond', methods=['POST'])
+def action_respond(room_id):
+    room_id = (room_id or '').upper()
+    room = ROOMS.get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found.'}), 404
+    if room.get('phase') != 'inGame':
+        return jsonify({'error': 'Game not started.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    player_id = payload.get('playerId') or session.get('player_id')
+    offer_id = payload.get('offerId')
+    decision = payload.get('decision')
+    if not player_id:
+        return jsonify({'error': 'Player ID required.'}), 400
+    if not offer_id or decision not in ('accept', 'decline'):
+        return jsonify({'error': 'Missing fields.'}), 400
+
+    lock = _get_room_lock(room_id)
+    lock.acquire()
+    try:
+        game_state = room.get('game_state') or {}
+        if str(game_state.get('round_phase') or '').lower() != 'action':
+            return jsonify({'error': 'Not in action phase.', 'roundPhase': game_state.get('round_phase')}), 400
+
+        negotiation_state = game_state.get('negotiation_state') or {}
+        try:
+            round_idx = int(negotiation_state.get('round', 1) or 1)
+        except Exception:
+            round_idx = 1
+
+        offers = negotiation_state.get('action_offers') or []
+        target_offer = None
+        for o in offers:
+            if isinstance(o, dict) and o.get('id') == offer_id:
+                target_offer = o
+                break
+
+        if not target_offer:
+            return jsonify({'error': 'Offer not found.'}), 404
+        if target_offer.get('to') != player_id:
+            return jsonify({'error': 'Not authorized.'}), 403
+        if int(target_offer.get('round') or 0) != int(round_idx):
+            return jsonify({'error': 'Offer not for this round.'}), 400
+        if target_offer.get('status') != 'pending':
+            return jsonify({'error': 'Offer already resolved.'}), 400
+
+        characters = game_state.get('characters') or []
+        me = next((c for c in characters if c.get('id') == player_id), None)
+        if not me:
+            return jsonify({'error': 'Player not found.'}), 400
+
+        offer_type = target_offer.get('type')
+        sender_id = target_offer.get('from')
+        zone = str(target_offer.get('zone') or '').upper()
+        if zone not in ('A1', 'A2', 'K1'):
+            zone = 'A1'
+
+        try:
+            before_tokens = int(me.get('influence_tokens', 0) or 0)
+        except Exception:
+            before_tokens = 0
+
+        if decision == 'accept':
+            target_offer['status'] = 'accepted'
+            reward = 1 if offer_type == 'persuade' else 2
+            try:
+                cur = int(me.get('influence_tokens', 0) or 0)
+            except Exception:
+                cur = 0
+            me['influence_tokens'] = min(int(MAX_PLAYER_TOKENS), cur + reward)
+            me['max_tokens'] = int(MAX_PLAYER_TOKENS)
+
+            if offer_type == 'pressure':
+                negotiation_state.setdefault('action_locks', {})
+                negotiation_state['action_locks'][player_id] = {
+                    'round': round_idx,
+                    'forced_intent': zone,
+                    'by': sender_id,
+                    'type': 'pressure',
+                }
+        else:
+            target_offer['status'] = 'declined'
+            if offer_type == 'pressure':
+                try:
+                    cur = int(me.get('influence_tokens', 0) or 0)
+                except Exception:
+                    cur = 0
+                me['influence_tokens'] = min(int(MAX_PLAYER_TOKENS), cur + 1)
+                me['max_tokens'] = int(MAX_PLAYER_TOKENS)
+                negotiation_state.setdefault('review_toasts', [])
+                negotiation_state['review_toasts'].append({
+                    'round': round_idx,
+                    'message': f"{player_id} rejected Pressure from {sender_id} (+1 Token)",
+                    'durationMs': 7000,
+                })
+
+        try:
+            after_tokens = int(me.get('influence_tokens', 0) or 0)
+        except Exception:
+            after_tokens = 0
+        if before_tokens < int(MAX_PLAYER_TOKENS) and after_tokens >= int(MAX_PLAYER_TOKENS):
+            try:
+                now_ms = int(time.time() * 1000)
+            except Exception:
+                now_ms = 0
+            _append_ui_event(negotiation_state, {
+                'audience': player_id,
+                'kind': 'center',
+                'message': 'You reached the max (12). You must act next ACTION phase or lose 2 tokens.',
+                'expiresTs': now_ms + 3000,
+            })
+
+        game_state['characters'] = characters
+        game_state['negotiation_state'] = negotiation_state
+        room['game_state'] = game_state
+
+        try:
+            socketio.emit('room_update', _get_public_room_state(room_id), room=room_id)
+        except Exception:
+            pass
+
+        return jsonify({'ok': True, 'offer': target_offer, 'tokensAfter': me.get('influence_tokens')})
+    finally:
+        lock.release()
 
 
 @app.route('/api/rooms/<room_id>/advance_turn', methods=['POST'])
